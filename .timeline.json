@@ -1,0 +1,62 @@
+{
+  "timeline_index": 31,
+  "planner": {
+    "Team Leader": {
+      "1": {
+        "task_id": "1",
+        "dependent_task_ids": [],
+        "instruction": "Sviluppa una web app completa per la gestione di liste di requisiti stimati basata sulla specifica nel documento PDF caricato. L'applicazione deve includere:\n\n1. **Modello Dati**: \n   - Lists (contenitore): list_id, name, owner, period, notes, status\n   - Requirements (requisiti): req_id, list_id, title, description, priority, business_owner, labels, state, estimator, created_on, last_estimated_on\n   - Estimates (stime): estimate_id, req_id, scenario, driver selezionati (complexity, environments, reuse, stakeholders), attività incluse/opzionali, rischi selezionati, valori calcolati\n   - Activities (catalogo): activity_code, display_name, driver_group, base_days, helper_short, helper_long, status\n\n2. **Sistema di Calcolo Deterministico**:\n   - Formula: overall_multiplier = m_complexity × m_env × m_reuse × m_stake\n   - Per ogni attività: days_i = round_half_up(base_days × overall_multiplier, 3)\n   - subtotal_days = Σ days_i\n   - contingency_days = round_half_up(subtotal_days × contingency_pct, 3)\n   - total_days = subtotal_days + contingency_days\n\n3. **Catalogo Attività con Helper** (dal documento):\n   - ANALYSIS: ANL_ALIGN (0.5 gg)\n   - DATAVERSE: DV_FIELD (0.25 gg), DV_FORM (0.5 gg), WF_HOOK (0.5 gg)\n   - AUTOMATION: PA_FLOW (0.5 gg), PA_CHILD (0.25 gg)\n   - COMMS: MAIL_TEMP (0.25 gg), RECIP_CONF (0.25 gg)\n   - QUALITY: E2E_TEST (0.5 gg), UAT_RUN (0.5 gg)\n   - GOVERNANCE: DOC_HAND (0.25 gg), DEPLOY (0.25 gg)\n   - ANALYTICS: KPI_RPT (0.5 gg)\n   Ogni attività con helper_short e helper_long come specificato nel documento.\n\n4. **UI/UX Schermate**:\n   - Lists: elenco liste con KPI (n. requisiti, somma total_days, status), azioni New/Export\n   - Requirements: gallery filtrabile per lista, card con titolo/priority/state/ultima stima\n   - Estimate Editor: pannelli per Scenario & Drivers, Activity Selection (con helper tooltip), Risks & Contingency, Summary\n   - Catalogo: visualizzazione attività/driver/rischi con helper\n\n5. **Export Semplice**:\n   - Formato CSV con colonne: List, Req ID, Title, Priority, Scenario, Complexity, Environments, Reuse, Stakeholders, Subtotal (days), Contingency %, Total (days), Estimator, Last Estimated On, State\n   - Solo campi chiave senza dettagli tecnici\n\n6. **Funzionalità**:\n   - Creazione/gestione liste e requisiti\n   - Sistema di stima con selezione driver/attività/rischi\n   - Helper integrati (tooltip per short, modale per long)\n   - Validazioni (driver mancanti → errore, attività non valide → errore)\n   - Clonazione stime\n   - Export CSV\n\nUsa Shadcn-ui, TypeScript e Tailwind CSS. Implementa localStorage per persistenza dati. Crea un'interfaccia moderna e intuitiva che segue le specifiche del documento.",
+        "task_type": "general",
+        "code": "",
+        "result": "",
+        "is_success": false,
+        "is_finished": false,
+        "assignee": "Alex",
+        "start_at": 1761818916.3930416
+      },
+      "current_task_id": "1"
+    }
+  },
+  "gallery_last_file": {},
+  "timeline_status": {
+    "1": 1,
+    "2": 1,
+    "3": 1,
+    "4": 1,
+    "5": 1,
+    "6": 1,
+    "7": 1,
+    "8": 1,
+    "9": 1,
+    "10": 1,
+    "11": 1,
+    "12": 1,
+    "13": 1,
+    "14": 1,
+    "15": 1,
+    "16": 1,
+    "17": 1,
+    "18": 1,
+    "19": 1,
+    "20": 1,
+    "21": 1,
+    "22": 1,
+    "23": 1,
+    "24": 1,
+    "25": 1,
+    "26": 1,
+    "27": 1,
+    "28": 1,
+    "29": 1,
+    "30": 1,
+    "31": 1
+  },
+  "preview_servers": {},
+  "preview_server": {
+    "project_dir": "/workspace/shadcn-ui",
+    "status": "initializing",
+    "config_path": ".mgx/config.yaml",
+    "timeline_index": 31
+  },
+  "last_build_failed": false
+}
