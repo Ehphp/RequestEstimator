@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, Save, Info, AlertCircle, Copy, Sparkles, RotateCcw } from 'lucide-react';
+import { ArrowLeft, Save, Info, AlertCircle, Copy, Sparkles, RotateCcw, User, Calendar, Tag } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -229,6 +229,25 @@ export function EstimateEditor({ requirement, list, onBack }: EstimateEditorProp
     return defaultSources.find(s => s.field === field);
   };
 
+  const getPriorityColor = (priority: string) => {
+    switch (priority) {
+      case 'High': return 'bg-red-100 text-red-800';
+      case 'Med': return 'bg-yellow-100 text-yellow-800';
+      case 'Low': return 'bg-green-100 text-green-800';
+      default: return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  const getStateColor = (state: string) => {
+    switch (state) {
+      case 'Proposed': return 'bg-blue-100 text-blue-800';
+      case 'Selected': return 'bg-purple-100 text-purple-800';
+      case 'Scheduled': return 'bg-orange-100 text-orange-800';
+      case 'Done': return 'bg-green-100 text-green-800';
+      default: return 'bg-gray-100 text-gray-800';
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-4">
@@ -238,7 +257,7 @@ export function EstimateEditor({ requirement, list, onBack }: EstimateEditorProp
         </Button>
         <div className="flex-1">
           <h1 className="text-3xl font-bold">Stima Requisito</h1>
-          <p className="text-muted-foreground">{requirement.title}</p>
+          <p className="text-muted-foreground">{requirement.req_id}</p>
           {list.preset_key && (
             <Badge variant="outline" className="mt-2">
               <Sparkles className="h-3 w-3 mr-1" />
@@ -251,6 +270,68 @@ export function EstimateEditor({ requirement, list, onBack }: EstimateEditorProp
           Ripristina tutti i default
         </Button>
       </div>
+
+      {/* Requirement Information Section */}
+      <Card className="border-l-4 border-l-primary">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Info className="h-5 w-5" />
+            Informazioni Requisito
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div>
+            <h3 className="text-lg font-semibold mb-2">{requirement.title}</h3>
+            <p className="text-muted-foreground leading-relaxed">{requirement.description}</p>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4 border-t">
+            <div className="flex items-center gap-2">
+              <Badge className={getPriorityColor(requirement.priority)}>
+                {requirement.priority}
+              </Badge>
+              <span className="text-sm text-muted-foreground">Priorità</span>
+            </div>
+            
+            <div className="flex items-center gap-2">
+              <Badge className={getStateColor(requirement.state)}>
+                {requirement.state}
+              </Badge>
+              <span className="text-sm text-muted-foreground">Stato</span>
+            </div>
+            
+            <div className="flex items-center gap-2">
+              <User className="h-4 w-4 text-muted-foreground" />
+              <span className="text-sm">{requirement.business_owner}</span>
+              <span className="text-sm text-muted-foreground">Business Owner</span>
+            </div>
+          </div>
+          
+          {requirement.labels && (
+            <div className="pt-2">
+              <div className="flex flex-wrap gap-1">
+                <Tag className="h-4 w-4 text-muted-foreground mr-2" />
+                {requirement.labels.split(',').map((label, index) => (
+                  <Badge key={index} variant="outline" className="text-xs">
+                    {label.trim()}
+                  </Badge>
+                ))}
+              </div>
+            </div>
+          )}
+          
+          <div className="flex items-center gap-2 pt-2 text-sm text-muted-foreground">
+            <Calendar className="h-4 w-4" />
+            <span>Creato il {new Date(requirement.created_on).toLocaleDateString('it-IT')}</span>
+            {requirement.last_estimated_on && (
+              <>
+                <span>•</span>
+                <span>Ultima stima: {new Date(requirement.last_estimated_on).toLocaleDateString('it-IT')}</span>
+              </>
+            )}
+          </div>
+        </CardContent>
+      </Card>
 
       {errors.length > 0 && (
         <Alert variant="destructive">
