@@ -1,11 +1,11 @@
 {
-  "timeline_index": 38,
+  "timeline_index": 42,
   "planner": {
     "Team Leader": {
       "1": {
         "task_id": "1",
         "dependent_task_ids": [],
-        "instruction": "Aggiungere il campo descrizione del requisito nella vista \"Stima Requisito\". Nella schermata EstimateEditor, dopo il titolo \"Stima Requisito\" e prima della sezione \"Scenario & Driver\", inserire una sezione che mostri:\n\n1. Titolo del requisito\n2. Descrizione completa del requisito (come compilata durante la creazione)\n3. Eventualmente altre informazioni del requisito come priorità, business owner, labels\n\nLa sezione dovrebbe essere visivamente separata e ben formattata per fornire il contesto completo del requisito durante la fase di stima.\n\nModifica il file `/src/components/EstimateEditor.tsx` per includere queste informazioni del requisito nella parte superiore della schermata di stima.",
+        "instruction": "Ottimizzare la UI della sezione \"Informazioni Requisito\" nella vista \"Stima Requisito\" per renderla più compatta. I dati sono corretti e coerenti, ma il layout deve essere più conciso.\n\nModifica il file `/src/components/EstimateEditor.tsx` per:\n\n1. **Ridurre lo spazio verticale** della sezione informazioni requisito\n2. **Layout più compatto** - disporre le informazioni su meno righe\n3. **Dimensioni ridotte** per testi, badge e spaziature\n4. **Layout orizzontale** dove possibile (es. priorità e stato sulla stessa riga)\n5. **Padding e margin ridotti** per la card delle informazioni\n6. **Font size più piccolo** per le informazioni secondarie\n7. **Altezza minima** per la sezione mantenendo la leggibilità\n\nL'obiettivo è mantenere tutte le informazioni visibili ma in uno spazio più ridotto, lasciando più spazio per i pannelli di stima sottostanti.",
         "task_type": "general",
         "code": "",
         "result": "",
@@ -13,7 +13,7 @@
         "is_finished": true,
         "assignee": "Alex",
         "start_at": 1761818916.3930416,
-        "end_at": 1761905576.990817
+        "end_at": 1761906556.634032
       },
       "current_task_id": "1"
     }
@@ -57,7 +57,11 @@
     "35": 1,
     "36": 1,
     "37": 1,
-    "38": 1
+    "38": 1,
+    "39": 1,
+    "40": 1,
+    "41": 1,
+    "42": 1
   },
   "preview_servers": {},
   "preview_server": {

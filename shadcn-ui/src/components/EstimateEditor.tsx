@@ -249,7 +249,7 @@ export function EstimateEditor({ requirement, list, onBack }: EstimateEditorProp
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <div className="flex items-center gap-4">
         <Button variant="outline" onClick={onBack}>
           <ArrowLeft className="h-4 w-4 mr-2" />
@@ -271,65 +271,52 @@ export function EstimateEditor({ requirement, list, onBack }: EstimateEditorProp
         </Button>
       </div>
 
-      {/* Requirement Information Section */}
+      {/* Compact Requirement Information Section */}
       <Card className="border-l-4 border-l-primary">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Info className="h-5 w-5" />
+        <CardHeader className="pb-2">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Info className="h-4 w-4" />
             Informazioni Requisito
           </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="pt-0 space-y-2">
           <div>
-            <h3 className="text-lg font-semibold mb-2">{requirement.title}</h3>
-            <p className="text-muted-foreground leading-relaxed">{requirement.description}</p>
+            <h3 className="font-semibold text-sm mb-1">{requirement.title}</h3>
+            <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2">{requirement.description}</p>
           </div>
           
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4 border-t">
-            <div className="flex items-center gap-2">
-              <Badge className={getPriorityColor(requirement.priority)}>
-                {requirement.priority}
-              </Badge>
-              <span className="text-sm text-muted-foreground">Priorità</span>
+          <div className="flex flex-wrap items-center gap-2 text-xs">
+            <Badge className={`${getPriorityColor(requirement.priority)} text-xs px-2 py-0.5`}>
+              {requirement.priority}
+            </Badge>
+            <Badge className={`${getStateColor(requirement.state)} text-xs px-2 py-0.5`}>
+              {requirement.state}
+            </Badge>
+            <div className="flex items-center gap-1">
+              <User className="h-3 w-3 text-muted-foreground" />
+              <span className="text-muted-foreground">{requirement.business_owner}</span>
             </div>
-            
-            <div className="flex items-center gap-2">
-              <Badge className={getStateColor(requirement.state)}>
-                {requirement.state}
-              </Badge>
-              <span className="text-sm text-muted-foreground">Stato</span>
+            <div className="flex items-center gap-1">
+              <Calendar className="h-3 w-3 text-muted-foreground" />
+              <span className="text-muted-foreground">{new Date(requirement.created_on).toLocaleDateString('it-IT')}</span>
             </div>
-            
-            <div className="flex items-center gap-2">
-              <User className="h-4 w-4 text-muted-foreground" />
-              <span className="text-sm">{requirement.business_owner}</span>
-              <span className="text-sm text-muted-foreground">Business Owner</span>
-            </div>
+            {requirement.last_estimated_on && (
+              <span className="text-muted-foreground">
+                • Ultima stima: {new Date(requirement.last_estimated_on).toLocaleDateString('it-IT')}
+              </span>
+            )}
           </div>
           
           {requirement.labels && (
-            <div className="pt-2">
-              <div className="flex flex-wrap gap-1">
-                <Tag className="h-4 w-4 text-muted-foreground mr-2" />
-                {requirement.labels.split(',').map((label, index) => (
-                  <Badge key={index} variant="outline" className="text-xs">
-                    {label.trim()}
-                  </Badge>
-                ))}
-              </div>
+            <div className="flex items-center gap-1 flex-wrap">
+              <Tag className="h-3 w-3 text-muted-foreground" />
+              {requirement.labels.split(',').map((label, index) => (
+                <Badge key={index} variant="outline" className="text-xs px-1.5 py-0.5 h-5">
+                  {label.trim()}
+                </Badge>
+              ))}
             </div>
           )}
-          
-          <div className="flex items-center gap-2 pt-2 text-sm text-muted-foreground">
-            <Calendar className="h-4 w-4" />
-            <span>Creato il {new Date(requirement.created_on).toLocaleDateString('it-IT')}</span>
-            {requirement.last_estimated_on && (
-              <>
-                <span>•</span>
-                <span>Ultima stima: {new Date(requirement.last_estimated_on).toLocaleDateString('it-IT')}</span>
-              </>
-            )}
-          </div>
         </CardContent>
       </Card>
 
