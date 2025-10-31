@@ -1,5 +1,5 @@
 {
-  "timeline_index": 53,
+  "timeline_index": 60,
   "planner": {
     "Team Leader": {
       "1": {
@@ -15,7 +15,7 @@
         "start_at": 1761818916.3930416,
         "end_at": 1761906693.5985138
       },
-      "current_task_id": "3",
+      "current_task_id": "4",
       "2": {
         "task_id": "2",
         "dependent_task_ids": [],
@@ -40,7 +40,20 @@
         "is_finished": true,
         "assignee": "Alex",
         "start_at": 1761907106.2870255,
-        "end_at": 1761907364.4354694
+        "end_at": 1761907457.0315402
+      },
+      "4": {
+        "task_id": "4",
+        "dependent_task_ids": [],
+        "instruction": "Correggere il bug nel calcolo della contingenza. Dall'immagine fornita dall'utente si vede che:\n- È selezionato 1 rischio \"Competenze mancanti\" con peso 600%\n- Il peso totale è 6 (probabilmente 600% = 6)\n- Ma la contingenza risulta 0 giorni (5%) invece di essere calcolata correttamente\n\nProblemi da correggere:\n\n1. **Verificare la logica di calcolo contingenza** nel file `/src/lib/calculations.ts`:\n   - La funzione `calculateContingencyFromRisks()` potrebbe non funzionare correttamente\n   - Il peso 600% dovrebbe essere convertito correttamente (600% = 6.0, non 600)\n   - La formula dovrebbe essere: contingenza = (10% base + peso_rischi) applicata al subtotal\n\n2. **Verificare i dati dei rischi** nel file `/src/data/catalog.ts`:\n   - Controllare che i pesi dei rischi siano definiti correttamente\n   - Il rischio \"Competenze mancanti\" dovrebbe avere peso 6 (non 600)\n\n3. **Debug del calcolo**:\n   - Aggiungere console.log per tracciare i valori durante il calcolo\n   - Verificare che selectedRisks venga passato correttamente\n   - Controllare che il subtotal sia > 0 prima di calcolare la contingenza\n\n4. **Correggere la visualizzazione**:\n   - Il \"Dettaglio Rischi\" dovrebbe mostrare correttamente come i rischi influenzano la contingenza\n   - La percentuale di contingenza dovrebbe essere calcolata correttamente\n\nObiettivo: Con 1 rischio di peso 6 selezionato, la contingenza dovrebbe essere circa 16% (10% base + 6%) del subtotal, non 0 giorni.",
+        "task_type": "general",
+        "code": "",
+        "result": "",
+        "is_success": false,
+        "is_finished": true,
+        "assignee": "Alex",
+        "start_at": 1761907457.0315464,
+        "end_at": 1761907717.5729103
       }
     }
   },
@@ -98,7 +111,14 @@
     "50": 1,
     "51": 1,
     "52": 1,
-    "53": 1
+    "53": 1,
+    "54": 1,
+    "55": 1,
+    "56": 1,
+    "57": 1,
+    "58": 1,
+    "59": 1,
+    "60": 1
   },
   "preview_servers": {},
   "preview_server": {
