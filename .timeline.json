@@ -1,5 +1,5 @@
 {
-  "timeline_index": 46,
+  "timeline_index": 53,
   "planner": {
     "Team Leader": {
       "1": {
@@ -15,7 +15,7 @@
         "start_at": 1761818916.3930416,
         "end_at": 1761906693.5985138
       },
-      "current_task_id": "2",
+      "current_task_id": "3",
       "2": {
         "task_id": "2",
         "dependent_task_ids": [],
@@ -27,7 +27,20 @@
         "is_finished": true,
         "assignee": "Alex",
         "start_at": 1761906693.5985205,
-        "end_at": 1761906896.616571
+        "end_at": 1761907106.2870193
+      },
+      "3": {
+        "task_id": "3",
+        "dependent_task_ids": [],
+        "instruction": "Verificare e correggere la logica di calcolo della stima per assicurarsi che la sezione \"Rischi & Contingenza\" venga effettivamente utilizzata nel calcolo.\n\nAnalizzare i seguenti file:\n1. `/src/lib/calculations.ts` - Verificare la funzione `calculateEstimate` per assicurarsi che i rischi selezionati (`selectedRisks`) vengano utilizzati nel calcolo della contingenza\n2. `/src/components/EstimateEditor.tsx` - Verificare che i rischi selezionati vengano passati correttamente alla funzione di calcolo\n\nProblemi da verificare e correggere:\n1. **Calcolo contingenza basato sui rischi** - I rischi selezionati devono influenzare la percentuale di contingenza\n2. **Visualizzazione del calcolo** - Mostrare chiaramente come i rischi influenzano il totale\n3. **Validazione dei rischi** - Assicurarsi che la selezione dei rischi sia considerata nella validazione\n4. **Debug del calcolo** - Aggiungere log o indicatori per verificare che i rischi vengano processati\n\nSe i rischi non vengono utilizzati, implementare la logica corretta per calcolare la contingenza basata sui pesi dei rischi selezionati e mostrare il dettaglio nel riepilogo del calcolo.",
+        "task_type": "general",
+        "code": "",
+        "result": "",
+        "is_success": false,
+        "is_finished": true,
+        "assignee": "Alex",
+        "start_at": 1761907106.2870255,
+        "end_at": 1761907364.4354694
       }
     }
   },
@@ -78,7 +91,14 @@
     "43": 1,
     "44": 1,
     "45": 1,
-    "46": 1
+    "46": 1,
+    "47": 1,
+    "48": 1,
+    "49": 1,
+    "50": 1,
+    "51": 1,
+    "52": 1,
+    "53": 1
   },
   "preview_servers": {},
   "preview_server": {

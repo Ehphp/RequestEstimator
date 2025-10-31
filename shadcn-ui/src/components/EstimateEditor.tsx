@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, Save, Info, AlertCircle, Copy, Sparkles, RotateCcw, User, Calendar, Tag } from 'lucide-react';
+import { ArrowLeft, Save, Info, AlertCircle, Copy, Sparkles, RotateCcw, User, Calendar, Tag, TrendingUp } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -248,6 +248,19 @@ export function EstimateEditor({ requirement, list, onBack }: EstimateEditorProp
     }
   };
 
+  // Calculate current risk impact for display
+  const getCurrentRiskImpact = () => {
+    if (selectedRisks.length === 0) return { weight: 0, percentage: 5 };
+    
+    const selectedRiskObjects = risks.filter(risk => selectedRisks.includes(risk.risk_id));
+    const weight = selectedRiskObjects.reduce((total, risk) => total + risk.weight, 0);
+    const percentage = Math.min(5 + (weight * 100), 50);
+    
+    return { weight: Number(weight.toFixed(3)), percentage: Math.round(percentage) };
+  };
+
+  const riskImpact = getCurrentRiskImpact();
+
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-4">
@@ -373,9 +386,9 @@ export function EstimateEditor({ requirement, list, onBack }: EstimateEditorProp
       )}
 
       {/* Optimized 3-Column Layout */}
-      <div className="grid gap-4 xl:grid-cols-3 lg:grid-cols-2 grid-cols-1">
+      <div className="grid gap-4 lg:grid-cols-3">
         {/* Column 1: Scenario & Drivers */}
-        <Card className="h-fit">
+        <Card className="lg:col-span-1">
           <CardHeader className="pb-3">
             <CardTitle className="text-lg">Scenario & Driver</CardTitle>
           </CardHeader>
@@ -494,7 +507,7 @@ export function EstimateEditor({ requirement, list, onBack }: EstimateEditorProp
         </Card>
 
         {/* Column 2: Activity Selection */}
-        <Card className="h-fit">
+        <Card className="lg:col-span-1">
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <CardTitle className="text-lg">Selezione Attività</CardTitle>
@@ -508,81 +521,86 @@ export function EstimateEditor({ requirement, list, onBack }: EstimateEditorProp
             </div>
           </CardHeader>
           <CardContent className="space-y-3">
-            {Object.entries(groupedActivities).map(([group, groupActivities]) => (
-              <div key={group}>
-                <h4 className="font-semibold text-sm mb-2 text-primary">{group}</h4>
-                <div className="space-y-2">
-                  {groupActivities.map((activity) => (
-                    <div key={activity.activity_code} className="flex items-center space-x-2">
-                      <Checkbox
-                        id={activity.activity_code}
-                        checked={selectedActivities.includes(activity.activity_code)}
-                        onCheckedChange={(checked) => {
-                          if (checked) {
-                            setSelectedActivities([...selectedActivities, activity.activity_code]);
-                          } else {
-                            setSelectedActivities(selectedActivities.filter(id => id !== activity.activity_code));
-                          }
-                        }}
-                      />
-                      <div className="flex-1 flex items-center gap-2">
-                        <label
-                          htmlFor={activity.activity_code}
-                          className="text-sm font-medium cursor-pointer"
-                        >
-                          {activity.display_name} ({activity.base_days}gg)
-                        </label>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Info className="h-4 w-4 text-muted-foreground cursor-help" />
-                          </TooltipTrigger>
-                          <TooltipContent className="max-w-xs">
-                            <p>{activity.helper_short}</p>
-                          </TooltipContent>
-                        </Tooltip>
-                        <Dialog>
-                          <DialogTrigger asChild>
-                            <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
-                              <Info className="h-3 w-3" />
-                            </Button>
-                          </DialogTrigger>
-                          <DialogContent className="max-w-2xl">
-                            <DialogHeader>
-                              <DialogTitle>{activity.display_name}</DialogTitle>
-                            </DialogHeader>
-                            <div className="space-y-4">
-                              <div>
-                                <p className="font-semibold">Giorni Base: {activity.base_days}</p>
-                                <p className="text-sm text-muted-foreground">Gruppo: {activity.driver_group}</p>
+            <div className="max-h-96 overflow-y-auto pr-2">
+              {Object.entries(groupedActivities).map(([group, groupActivities]) => (
+                <div key={group} className="mb-4">
+                  <h4 className="font-semibold text-sm mb-2 text-primary">{group}</h4>
+                  <div className="space-y-2">
+                    {groupActivities.map((activity) => (
+                      <div key={activity.activity_code} className="flex items-center space-x-2">
+                        <Checkbox
+                          id={activity.activity_code}
+                          checked={selectedActivities.includes(activity.activity_code)}
+                          onCheckedChange={(checked) => {
+                            if (checked) {
+                              setSelectedActivities([...selectedActivities, activity.activity_code]);
+                            } else {
+                              setSelectedActivities(selectedActivities.filter(id => id !== activity.activity_code));
+                            }
+                          }}
+                        />
+                        <div className="flex-1 flex items-center gap-2">
+                          <label
+                            htmlFor={activity.activity_code}
+                            className="text-sm font-medium cursor-pointer flex-1"
+                          >
+                            {activity.display_name} ({activity.base_days}gg)
+                          </label>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Info className="h-4 w-4 text-muted-foreground cursor-help" />
+                            </TooltipTrigger>
+                            <TooltipContent className="max-w-xs">
+                              <p>{activity.helper_short}</p>
+                            </TooltipContent>
+                          </Tooltip>
+                          <Dialog>
+                            <DialogTrigger asChild>
+                              <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
+                                <Info className="h-3 w-3" />
+                              </Button>
+                            </DialogTrigger>
+                            <DialogContent className="max-w-2xl">
+                              <DialogHeader>
+                                <DialogTitle>{activity.display_name}</DialogTitle>
+                              </DialogHeader>
+                              <div className="space-y-4">
+                                <div>
+                                  <p className="font-semibold">Giorni Base: {activity.base_days}</p>
+                                  <p className="text-sm text-muted-foreground">Gruppo: {activity.driver_group}</p>
+                                </div>
+                                <div>
+                                  <h4 className="font-semibold mb-2">Descrizione Breve</h4>
+                                  <p className="text-sm">{activity.helper_short}</p>
+                                </div>
+                                <div>
+                                  <h4 className="font-semibold mb-2">Dettagli Completi</h4>
+                                  <div className="text-sm whitespace-pre-line">{activity.helper_long}</div>
+                                </div>
                               </div>
-                              <div>
-                                <h4 className="font-semibold mb-2">Descrizione Breve</h4>
-                                <p className="text-sm">{activity.helper_short}</p>
-                              </div>
-                              <div>
-                                <h4 className="font-semibold mb-2">Dettagli Completi</h4>
-                                <div className="text-sm whitespace-pre-line">{activity.helper_long}</div>
-                              </div>
-                            </div>
-                          </DialogContent>
-                        </Dialog>
+                            </DialogContent>
+                          </Dialog>
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
+                  {group !== 'Analytics' && <Separator className="my-3" />}
                 </div>
-                {group !== 'Analytics' && <Separator className="my-2" />}
-              </div>
-            ))}
+              ))}
+            </div>
           </CardContent>
         </Card>
 
         {/* Column 3: Risks & Summary (Stacked) */}
-        <div className="space-y-4">
-          {/* Risks & Contingency - Now More Prominent */}
-          <Card className="border-2 border-orange-200 bg-orange-50/30">
+        <div className="lg:col-span-1 space-y-4">
+          {/* Risks & Contingency - Now shows impact */}
+          <Card className="border-2 border-orange-200">
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
-                <CardTitle className="text-lg text-orange-900">Rischi & Contingenza</CardTitle>
+                <CardTitle className="text-lg text-orange-800 flex items-center gap-2">
+                  Rischi & Contingenza
+                  <TrendingUp className="h-4 w-4" />
+                </CardTitle>
                 {getDefaultSource('risks') && (
                   <DefaultPill
                     source={getDefaultSource('risks')!.source}
@@ -591,11 +609,23 @@ export function EstimateEditor({ requirement, list, onBack }: EstimateEditorProp
                   />
                 )}
               </div>
+              {/* Show current risk impact */}
+              <div className="bg-orange-50 p-2 rounded text-sm">
+                <div className="flex justify-between items-center">
+                  <span className="text-orange-800">Impatto Rischi:</span>
+                  <Badge variant="outline" className="bg-orange-100 text-orange-800">
+                    +{riskImpact.percentage}% contingenza
+                  </Badge>
+                </div>
+                <div className="text-xs text-orange-700 mt-1">
+                  {selectedRisks.length} rischi selezionati • Peso totale: {riskImpact.weight}
+                </div>
+              </div>
             </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="space-y-2">
+            <CardContent className="space-y-2">
+              <div className="max-h-48 overflow-y-auto pr-2">
                 {risks.map((risk) => (
-                  <div key={risk.risk_id} className="flex items-center space-x-2">
+                  <div key={risk.risk_id} className="flex items-start space-x-2 mb-3">
                     <Checkbox
                       id={risk.risk_id}
                       checked={selectedRisks.includes(risk.risk_id)}
@@ -606,15 +636,19 @@ export function EstimateEditor({ requirement, list, onBack }: EstimateEditorProp
                           setSelectedRisks(selectedRisks.filter(id => id !== risk.risk_id));
                         }
                       }}
+                      className="mt-0.5"
                     />
                     <div className="flex-1">
                       <label
                         htmlFor={risk.risk_id}
-                        className="text-sm font-medium cursor-pointer"
+                        className="text-sm font-medium cursor-pointer block"
                       >
-                        {risk.risk_item} (peso: {risk.weight})
+                        {risk.risk_item} 
+                        <Badge variant="secondary" className="ml-2 text-xs">
+                          +{Math.round(risk.weight * 100)}%
+                        </Badge>
                       </label>
-                      <p className="text-xs text-muted-foreground">{risk.guidance}</p>
+                      <p className="text-xs text-muted-foreground mt-1">{risk.guidance}</p>
                     </div>
                   </div>
                 ))}
@@ -622,8 +656,8 @@ export function EstimateEditor({ requirement, list, onBack }: EstimateEditorProp
             </CardContent>
           </Card>
 
-          {/* Summary - Now More Prominent */}
-          <Card className="border-2 border-primary bg-primary/5">
+          {/* Summary - Now shows risk breakdown */}
+          <Card className="border-2 border-primary">
             <CardHeader className="pb-3">
               <CardTitle className="text-lg text-primary">Riepilogo Calcolo</CardTitle>
             </CardHeader>
@@ -648,23 +682,36 @@ export function EstimateEditor({ requirement, list, onBack }: EstimateEditorProp
                       <p className="text-muted-foreground text-xs">Subtotal</p>
                       <p className="font-semibold">{calculatedEstimate.subtotal_days} giorni</p>
                     </div>
-                    <div className="text-center p-2 bg-muted rounded">
+                    <div className="text-center p-2 bg-orange-50 rounded border border-orange-200">
                       <p className="text-muted-foreground text-xs">Contingenza</p>
-                      <p className="font-semibold">
-                        {calculatedEstimate.contingency_days}gg 
-                        ({Math.round((calculatedEstimate.contingency_pct || 0) * 100)}%)
+                      <p className="font-semibold text-xs text-orange-800">
+                        {calculatedEstimate.contingency_days} giorni 
+                        <br />({Math.round((calculatedEstimate.contingency_pct || 0) * 100)}%)
                       </p>
                     </div>
                   </div>
                   
-                  <div className="text-center p-4 bg-primary/10 rounded-lg border border-primary/20">
+                  {/* Risk breakdown */}
+                  {(calculatedEstimate as any).selected_risks_count > 0 && (
+                    <div className="bg-orange-50 p-2 rounded text-xs border border-orange-200">
+                      <p className="font-medium text-orange-900">Dettaglio Rischi:</p>
+                      <p className="text-orange-800">
+                        {(calculatedEstimate as any).selected_risks_count} rischi • 
+                        Peso: {((calculatedEstimate as any).selected_risks_weight * 100).toFixed(1)}% • 
+                        Contingenza base: 5% + {(((calculatedEstimate.contingency_pct || 0) - 0.05) * 100).toFixed(1)}% = {Math.round((calculatedEstimate.contingency_pct || 0) * 100)}%
+                      </p>
+                    </div>
+                  )}
+                  
+                  <Separator />
+                  <div className="text-center bg-primary/10 p-4 rounded-lg">
                     <p className="text-muted-foreground text-sm">Totale Finale</p>
                     <p className="text-3xl font-bold text-primary">{calculatedEstimate.total_days} giorni</p>
                   </div>
                   
                   {/* Show applied defaults summary */}
                   {defaultSources.length > 0 && (
-                    <div className="bg-blue-50 p-3 rounded-lg border border-blue-200">
+                    <div className="bg-blue-50 p-3 rounded-lg">
                       <p className="text-sm font-medium text-blue-900 mb-2">
                         <Sparkles className="h-4 w-4 inline mr-1" />
                         Default applicati:
