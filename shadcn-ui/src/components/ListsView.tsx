@@ -30,7 +30,7 @@ export function ListsView({ onSelectList }: ListsViewProps) {
     period: '',
     notes: '',
     status: 'Draft' as const,
-    preset_key: undefined as string | undefined
+    preset_key: 'none' as string
   });
   const [defaultSources, setDefaultSources] = useState<Record<string, string>>({});
   const [overriddenFields, setOverriddenFields] = useState<Record<string, boolean>>({});
@@ -62,7 +62,7 @@ export function ListsView({ onSelectList }: ListsViewProps) {
     const listData: List = {
       list_id: editingList?.list_id || `LIST-${Date.now()}`,
       ...formData,
-      preset_key: formData.preset_key as List['preset_key'],
+      preset_key: formData.preset_key === 'none' ? undefined : formData.preset_key as List['preset_key'],
       created_on: editingList?.created_on || new Date().toISOString()
     };
     
@@ -79,7 +79,7 @@ export function ListsView({ onSelectList }: ListsViewProps) {
       period: defaults.period || '',
       notes: defaults.notes || '',
       status: defaults.status || 'Draft',
-      preset_key: undefined
+      preset_key: 'none'
     });
     setDefaultSources({
       owner: 'Current User',
@@ -104,7 +104,7 @@ export function ListsView({ onSelectList }: ListsViewProps) {
       period: list.period,
       notes: list.notes,
       status: list.status,
-      preset_key: list.preset_key
+      preset_key: list.preset_key || 'none'
     });
     // When editing, all fields are considered overridden
     setOverriddenFields({
@@ -224,14 +224,14 @@ export function ListsView({ onSelectList }: ListsViewProps) {
               <div>
                 <Label htmlFor="preset">Preset (Opzionale)</Label>
                 <Select 
-                  value={formData.preset_key || ''} 
-                  onValueChange={(value) => setFormData({ ...formData, preset_key: value || undefined })}
+                  value={formData.preset_key} 
+                  onValueChange={(value) => setFormData({ ...formData, preset_key: value })}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Seleziona preset per default intelligenti" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">Nessun preset</SelectItem>
+                    <SelectItem value="none">Nessun preset</SelectItem>
                     {presets.map((preset) => (
                       <SelectItem key={preset.preset_key} value={preset.preset_key}>
                         {preset.name}
@@ -239,7 +239,7 @@ export function ListsView({ onSelectList }: ListsViewProps) {
                     ))}
                   </SelectContent>
                 </Select>
-                {formData.preset_key && (
+                {formData.preset_key !== 'none' && (
                   <p className="text-xs text-muted-foreground mt-1">
                     {presets.find(p => p.preset_key === formData.preset_key)?.description_template}
                   </p>
