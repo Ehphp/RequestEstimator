@@ -335,7 +335,7 @@ export function EstimateEditor({ requirement, list, onBack }: EstimateEditorProp
 
       {previousEstimates.length > 0 && (
         <Card>
-          <CardHeader>
+          <CardHeader className="pb-3">
             <CardTitle className="text-lg">Stime Precedenti</CardTitle>
           </CardHeader>
           <CardContent>
@@ -372,26 +372,28 @@ export function EstimateEditor({ requirement, list, onBack }: EstimateEditorProp
         </Card>
       )}
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        {/* Scenario & Drivers */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Scenario & Driver</CardTitle>
+      {/* Optimized 3-Column Layout */}
+      <div className="grid gap-4 xl:grid-cols-3 lg:grid-cols-2 grid-cols-1">
+        {/* Column 1: Scenario & Drivers */}
+        <Card className="h-fit">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-lg">Scenario & Driver</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-3">
             <div>
-              <Label htmlFor="scenario">Scenario</Label>
+              <Label htmlFor="scenario" className="text-sm">Scenario</Label>
               <Input
                 id="scenario"
                 value={scenario}
                 onChange={(e) => setScenario(e.target.value)}
                 placeholder="es. A, B, C"
+                className="mt-1"
               />
             </div>
             
             <div>
-              <div className="flex items-center justify-between mb-2">
-                <Label htmlFor="complexity">Complessità</Label>
+              <div className="flex items-center justify-between mb-1">
+                <Label htmlFor="complexity" className="text-sm">Complessità</Label>
                 {getDefaultSource('complexity') && (
                   <DefaultPill
                     source={getDefaultSource('complexity')!.source}
@@ -415,8 +417,8 @@ export function EstimateEditor({ requirement, list, onBack }: EstimateEditorProp
             </div>
 
             <div>
-              <div className="flex items-center justify-between mb-2">
-                <Label htmlFor="environments">Ambienti</Label>
+              <div className="flex items-center justify-between mb-1">
+                <Label htmlFor="environments" className="text-sm">Ambienti</Label>
                 {getDefaultSource('environments') && (
                   <DefaultPill
                     source={getDefaultSource('environments')!.source}
@@ -440,8 +442,8 @@ export function EstimateEditor({ requirement, list, onBack }: EstimateEditorProp
             </div>
 
             <div>
-              <div className="flex items-center justify-between mb-2">
-                <Label htmlFor="reuse">Riutilizzo</Label>
+              <div className="flex items-center justify-between mb-1">
+                <Label htmlFor="reuse" className="text-sm">Riutilizzo</Label>
                 {getDefaultSource('reuse') && (
                   <DefaultPill
                     source={getDefaultSource('reuse')!.source}
@@ -465,8 +467,8 @@ export function EstimateEditor({ requirement, list, onBack }: EstimateEditorProp
             </div>
 
             <div>
-              <div className="flex items-center justify-between mb-2">
-                <Label htmlFor="stakeholders">Stakeholder</Label>
+              <div className="flex items-center justify-between mb-1">
+                <Label htmlFor="stakeholders" className="text-sm">Stakeholder</Label>
                 {getDefaultSource('stakeholders') && (
                   <DefaultPill
                     source={getDefaultSource('stakeholders')!.source}
@@ -491,11 +493,11 @@ export function EstimateEditor({ requirement, list, onBack }: EstimateEditorProp
           </CardContent>
         </Card>
 
-        {/* Activity Selection */}
-        <Card>
-          <CardHeader>
+        {/* Column 2: Activity Selection */}
+        <Card className="h-fit">
+          <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
-              <CardTitle>Selezione Attività</CardTitle>
+              <CardTitle className="text-lg">Selezione Attività</CardTitle>
               {getDefaultSource('activities') && (
                 <DefaultPill
                   source={getDefaultSource('activities')!.source}
@@ -505,7 +507,7 @@ export function EstimateEditor({ requirement, list, onBack }: EstimateEditorProp
               )}
             </div>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-3">
             {Object.entries(groupedActivities).map(([group, groupActivities]) => (
               <div key={group}>
                 <h4 className="font-semibold text-sm mb-2 text-primary">{group}</h4>
@@ -568,119 +570,122 @@ export function EstimateEditor({ requirement, list, onBack }: EstimateEditorProp
                     </div>
                   ))}
                 </div>
-                {group !== 'Analytics' && <Separator className="my-3" />}
+                {group !== 'Analytics' && <Separator className="my-2" />}
               </div>
             ))}
           </CardContent>
         </Card>
 
-        {/* Risks & Contingency */}
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle>Rischi & Contingenza</CardTitle>
-              {getDefaultSource('risks') && (
-                <DefaultPill
-                  source={getDefaultSource('risks')!.source}
-                  isOverridden={overriddenFields.risks || false}
-                  onToggleOverride={() => handleToggleOverride('risks')}
-                />
-              )}
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              {risks.map((risk) => (
-                <div key={risk.risk_id} className="flex items-center space-x-2">
-                  <Checkbox
-                    id={risk.risk_id}
-                    checked={selectedRisks.includes(risk.risk_id)}
-                    onCheckedChange={(checked) => {
-                      if (checked) {
-                        setSelectedRisks([...selectedRisks, risk.risk_id]);
-                      } else {
-                        setSelectedRisks(selectedRisks.filter(id => id !== risk.risk_id));
-                      }
-                    }}
+        {/* Column 3: Risks & Summary (Stacked) */}
+        <div className="space-y-4">
+          {/* Risks & Contingency - Now More Prominent */}
+          <Card className="border-2 border-orange-200 bg-orange-50/30">
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-lg text-orange-900">Rischi & Contingenza</CardTitle>
+                {getDefaultSource('risks') && (
+                  <DefaultPill
+                    source={getDefaultSource('risks')!.source}
+                    isOverridden={overriddenFields.risks || false}
+                    onToggleOverride={() => handleToggleOverride('risks')}
                   />
-                  <div className="flex-1">
-                    <label
-                      htmlFor={risk.risk_id}
-                      className="text-sm font-medium cursor-pointer"
-                    >
-                      {risk.risk_item} (peso: {risk.weight})
-                    </label>
-                    <p className="text-xs text-muted-foreground">{risk.guidance}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Summary */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Riepilogo Calcolo</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <Button onClick={handleCalculate} className="w-full" size="lg">
-              <Info className="h-4 w-4 mr-2" />
-              Calcola Stima
-            </Button>
-            
-            {calculatedEstimate && (
-              <div className="space-y-3">
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <div>
-                    <p className="text-muted-foreground">Giorni Base</p>
-                    <p className="font-semibold">{calculatedEstimate.activities_base_days}</p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground">Moltiplicatore</p>
-                    <p className="font-semibold">x{calculatedEstimate.driver_multiplier}</p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground">Subtotal</p>
-                    <p className="font-semibold">{calculatedEstimate.subtotal_days} giorni</p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground">Contingenza</p>
-                    <p className="font-semibold">
-                      {calculatedEstimate.contingency_days} giorni 
-                      ({Math.round((calculatedEstimate.contingency_pct || 0) * 100)}%)
-                    </p>
-                  </div>
-                </div>
-                <Separator />
-                <div className="text-center">
-                  <p className="text-muted-foreground">Totale Finale</p>
-                  <p className="text-2xl font-bold text-primary">{calculatedEstimate.total_days} giorni</p>
-                </div>
-                
-                {/* Show applied defaults summary */}
-                {defaultSources.length > 0 && (
-                  <div className="bg-blue-50 p-3 rounded-lg">
-                    <p className="text-sm font-medium text-blue-900 mb-2">
-                      <Sparkles className="h-4 w-4 inline mr-1" />
-                      Default applicati:
-                    </p>
-                    <div className="text-xs text-blue-800 space-y-1">
-                      {defaultSources.filter(s => !overriddenFields[s.field]).map((source, index) => (
-                        <p key={index}>• {source.field}: {source.source}</p>
-                      ))}
+                )}
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="space-y-2">
+                {risks.map((risk) => (
+                  <div key={risk.risk_id} className="flex items-center space-x-2">
+                    <Checkbox
+                      id={risk.risk_id}
+                      checked={selectedRisks.includes(risk.risk_id)}
+                      onCheckedChange={(checked) => {
+                        if (checked) {
+                          setSelectedRisks([...selectedRisks, risk.risk_id]);
+                        } else {
+                          setSelectedRisks(selectedRisks.filter(id => id !== risk.risk_id));
+                        }
+                      }}
+                    />
+                    <div className="flex-1">
+                      <label
+                        htmlFor={risk.risk_id}
+                        className="text-sm font-medium cursor-pointer"
+                      >
+                        {risk.risk_item} (peso: {risk.weight})
+                      </label>
+                      <p className="text-xs text-muted-foreground">{risk.guidance}</p>
                     </div>
                   </div>
-                )}
-                
-                <Button onClick={handleSave} className="w-full" size="lg">
-                  <Save className="h-4 w-4 mr-2" />
-                  Salva Stima
-                </Button>
+                ))}
               </div>
-            )}
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+
+          {/* Summary - Now More Prominent */}
+          <Card className="border-2 border-primary bg-primary/5">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-lg text-primary">Riepilogo Calcolo</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <Button onClick={handleCalculate} className="w-full" size="lg">
+                <Info className="h-4 w-4 mr-2" />
+                Calcola Stima
+              </Button>
+              
+              {calculatedEstimate && (
+                <div className="space-y-3">
+                  <div className="grid grid-cols-2 gap-3 text-sm">
+                    <div className="text-center p-2 bg-muted rounded">
+                      <p className="text-muted-foreground text-xs">Giorni Base</p>
+                      <p className="font-semibold">{calculatedEstimate.activities_base_days}</p>
+                    </div>
+                    <div className="text-center p-2 bg-muted rounded">
+                      <p className="text-muted-foreground text-xs">Moltiplicatore</p>
+                      <p className="font-semibold">x{calculatedEstimate.driver_multiplier}</p>
+                    </div>
+                    <div className="text-center p-2 bg-muted rounded">
+                      <p className="text-muted-foreground text-xs">Subtotal</p>
+                      <p className="font-semibold">{calculatedEstimate.subtotal_days} giorni</p>
+                    </div>
+                    <div className="text-center p-2 bg-muted rounded">
+                      <p className="text-muted-foreground text-xs">Contingenza</p>
+                      <p className="font-semibold">
+                        {calculatedEstimate.contingency_days}gg 
+                        ({Math.round((calculatedEstimate.contingency_pct || 0) * 100)}%)
+                      </p>
+                    </div>
+                  </div>
+                  
+                  <div className="text-center p-4 bg-primary/10 rounded-lg border border-primary/20">
+                    <p className="text-muted-foreground text-sm">Totale Finale</p>
+                    <p className="text-3xl font-bold text-primary">{calculatedEstimate.total_days} giorni</p>
+                  </div>
+                  
+                  {/* Show applied defaults summary */}
+                  {defaultSources.length > 0 && (
+                    <div className="bg-blue-50 p-3 rounded-lg border border-blue-200">
+                      <p className="text-sm font-medium text-blue-900 mb-2">
+                        <Sparkles className="h-4 w-4 inline mr-1" />
+                        Default applicati:
+                      </p>
+                      <div className="text-xs text-blue-800 space-y-1">
+                        {defaultSources.filter(s => !overriddenFields[s.field]).map((source, index) => (
+                          <p key={index}>• {source.field}: {source.source}</p>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  
+                  <Button onClick={handleSave} className="w-full" size="lg">
+                    <Save className="h-4 w-4 mr-2" />
+                    Salva Stima
+                  </Button>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
       </div>
     </div>
   );

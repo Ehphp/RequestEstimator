@@ -1,5 +1,5 @@
 {
-  "timeline_index": 42,
+  "timeline_index": 46,
   "planner": {
     "Team Leader": {
       "1": {
@@ -13,9 +13,22 @@
         "is_finished": true,
         "assignee": "Alex",
         "start_at": 1761818916.3930416,
-        "end_at": 1761906556.634032
+        "end_at": 1761906693.5985138
       },
-      "current_task_id": "1"
+      "current_task_id": "2",
+      "2": {
+        "task_id": "2",
+        "dependent_task_ids": [],
+        "instruction": "Riorganizzare completamente il layout della vista \"Stima Requisito\" per migliorare la visibilità e l'usabilità di tutte le sezioni, in particolare \"Rischi & Contingenza\" e \"Riepilogo Calcolo\" che attualmente sono poco visibili.\n\nModifica il file `/src/components/EstimateEditor.tsx` per:\n\n1. **Layout a griglia ottimizzato** - Riorganizzare tutte le sezioni in un layout più efficiente\n2. **Sezioni \"Rischi & Contingenza\" e \"Riepilogo Calcolo\" più visibili** - Posizionarle meglio e renderle più prominenti\n3. **Altezze equilibrate** - Bilanciare l'altezza di tutte le sezioni per evitare scroll eccessivo\n4. **Layout responsive migliorato** - Ottimizzare per diverse dimensioni di schermo\n5. **Gerarchia visiva chiara** - Rendere più evidenti le sezioni importanti\n6. **Spazi bianchi ottimizzati** - Ridurre gli spazi inutili ma mantenere la leggibilità\n7. **Posizionamento strategico** - Mettere le sezioni più importanti in posizioni più visibili\n\nConsidera un layout a 3 colonne o 2+1 colonne per sfruttare meglio lo spazio orizzontale disponibile e rendere tutte le sezioni facilmente accessibili senza scroll.",
+        "task_type": "general",
+        "code": "",
+        "result": "",
+        "is_success": false,
+        "is_finished": true,
+        "assignee": "Alex",
+        "start_at": 1761906693.5985205,
+        "end_at": 1761906896.616571
+      }
     }
   },
   "gallery_last_file": {},
@@ -61,7 +74,11 @@
     "39": 1,
     "40": 1,
     "41": 1,
-    "42": 1
+    "42": 1,
+    "43": 1,
+    "44": 1,
+    "45": 1,
+    "46": 1
   },
   "preview_servers": {},
   "preview_server": {
