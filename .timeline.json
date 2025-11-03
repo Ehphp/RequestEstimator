@@ -1,5 +1,5 @@
 {
-  "timeline_index": 60,
+  "timeline_index": 75,
   "planner": {
     "Team Leader": {
       "1": {
@@ -15,7 +15,7 @@
         "start_at": 1761818916.3930416,
         "end_at": 1761906693.5985138
       },
-      "current_task_id": "4",
+      "current_task_id": "5",
       "2": {
         "task_id": "2",
         "dependent_task_ids": [],
@@ -53,7 +53,20 @@
         "is_finished": true,
         "assignee": "Alex",
         "start_at": 1761907457.0315464,
-        "end_at": 1761907717.5729103
+        "end_at": 1762167765.0333562
+      },
+      "5": {
+        "task_id": "5",
+        "dependent_task_ids": [],
+        "instruction": "Configurare il database Supabase per l'applicazione di gestione requisiti stimati. L'applicazione è già collegata a Supabase ma mancano le tabelle e i dati.\n\nCompiti da eseguire:\n\n1. **Creare le tabelle Supabase** basate sui tipi definiti in `/src/types.ts`:\n   - Tabella `lists` per le liste di requisiti\n   - Tabella `requirements` per i requisiti\n   - Tabella `estimates` per le stime\n   - Tabelle di supporto per `activities`, `drivers`, `risks`, `contingency_bands`\n\n2. **Popolare le tabelle con i dati del catalogo** da `/src/data/catalog.ts`:\n   - Inserire tutte le attività (activities)\n   - Inserire tutti i driver\n   - Inserire tutti i rischi\n   - Inserire le bande di contingenza\n\n3. **Configurare le relazioni** tra le tabelle:\n   - Foreign keys appropriate\n   - Indici per le performance\n   - Politiche RLS (Row Level Security) se necessario\n\n4. **Aggiornare il codice** per utilizzare Supabase invece del localStorage:\n   - Modificare `/src/lib/storage.ts` per utilizzare Supabase client\n   - Mantenere la compatibilità con l'interfaccia esistente\n   - Gestire le operazioni CRUD via Supabase\n\n5. **Testare la connessione** e le operazioni:\n   - Verificare che i dati vengano salvati e recuperati correttamente\n   - Testare tutte le operazioni CRUD\n   - Verificare che l'interfaccia funzioni senza modifiche\n\nObiettivo: L'applicazione deve funzionare completamente con Supabase come backend, mantenendo tutte le funzionalità esistenti.",
+        "task_type": "general",
+        "code": "",
+        "result": "",
+        "is_success": false,
+        "is_finished": true,
+        "assignee": "Alex",
+        "start_at": 1762167765.0333622,
+        "end_at": 1762168478.7287257
       }
     }
   },
@@ -118,7 +131,22 @@
     "57": 1,
     "58": 1,
     "59": 1,
-    "60": 1
+    "60": 1,
+    "61": 1,
+    "62": 1,
+    "63": 1,
+    "64": 1,
+    "65": 1,
+    "66": 1,
+    "67": 1,
+    "68": 1,
+    "69": 1,
+    "70": 1,
+    "71": 1,
+    "72": 1,
+    "73": 1,
+    "74": 1,
+    "75": 1
   },
   "preview_servers": {},
   "preview_server": {

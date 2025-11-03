@@ -1,146 +1,326 @@
-import { List, Requirement, Estimate, ExportRow } from '../types';
+import { List, Requirement, Estimate, Activity, Driver, Risk, ContingencyBand, ExportRow } from '../types';
+import { supabase, TABLES } from './supabase';
 
-const STORAGE_KEYS = {
-  LISTS: 'requirement_lists',
-  REQUIREMENTS: 'requirements',
-  ESTIMATES: 'estimates'
-};
-
-// Lists
-export function getLists(): List[] {
-  const data = localStorage.getItem(STORAGE_KEYS.LISTS);
-  return data ? JSON.parse(data) : [];
+// Utility functions
+export function generateId(prefix: string): string {
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 }
 
-export function saveList(list: List): void {
-  const lists = getLists();
-  const existingIndex = lists.findIndex(l => l.list_id === list.list_id);
-  
-  if (existingIndex >= 0) {
-    lists[existingIndex] = list;
-  } else {
-    lists.push(list);
+// Lists Management
+export async function getLists(): Promise<List[]> {
+  try {
+    const { data, error } = await supabase
+      .from(TABLES.LISTS)
+      .select('*')
+      .eq('status', 'Active')
+      .order('created_on', { ascending: false });
+    
+    if (error) {
+      console.error('Error fetching lists:', error);
+      return [];
+    }
+    
+    return data || [];
+  } catch (error) {
+    console.error('Error in getLists:', error);
+    return [];
   }
-  
-  localStorage.setItem(STORAGE_KEYS.LISTS, JSON.stringify(lists));
 }
 
-export function deleteList(listId: string): void {
-  const lists = getLists();
-  const filtered = lists.filter(l => l.list_id !== listId);
-  localStorage.setItem(STORAGE_KEYS.LISTS, JSON.stringify(filtered));
-  
-  // Delete related requirements and estimates
-  const requirements = getRequirements().filter(r => r.list_id !== listId);
-  localStorage.setItem(STORAGE_KEYS.REQUIREMENTS, JSON.stringify(requirements));
-  
-  const estimates = getEstimates();
-  const requirementIds = getRequirements().filter(r => r.list_id === listId).map(r => r.req_id);
-  const filteredEstimates = estimates.filter(e => !requirementIds.includes(e.req_id));
-  localStorage.setItem(STORAGE_KEYS.ESTIMATES, JSON.stringify(filteredEstimates));
-}
-
-// Requirements
-export function getRequirements(): Requirement[] {
-  const data = localStorage.getItem(STORAGE_KEYS.REQUIREMENTS);
-  return data ? JSON.parse(data) : [];
-}
-
-export function getRequirementsByListId(listId: string): Requirement[] {
-  return getRequirements().filter(r => r.list_id === listId);
-}
-
-export function saveRequirement(requirement: Requirement): void {
-  const requirements = getRequirements();
-  const existingIndex = requirements.findIndex(r => r.req_id === requirement.req_id);
-  
-  if (existingIndex >= 0) {
-    requirements[existingIndex] = requirement;
-  } else {
-    requirements.push(requirement);
+export async function saveList(list: List): Promise<void> {
+  try {
+    const { error } = await supabase
+      .from(TABLES.LISTS)
+      .upsert(list, { onConflict: 'list_id' });
+    
+    if (error) {
+      console.error('Error saving list:', error);
+      throw error;
+    }
+  } catch (error) {
+    console.error('Error in saveList:', error);
+    throw error;
   }
-  
-  localStorage.setItem(STORAGE_KEYS.REQUIREMENTS, JSON.stringify(requirements));
 }
 
-export function deleteRequirement(reqId: string): void {
-  const requirements = getRequirements();
-  const filtered = requirements.filter(r => r.req_id !== reqId);
-  localStorage.setItem(STORAGE_KEYS.REQUIREMENTS, JSON.stringify(filtered));
-  
-  // Delete related estimates
-  const estimates = getEstimates().filter(e => e.req_id !== reqId);
-  localStorage.setItem(STORAGE_KEYS.ESTIMATES, JSON.stringify(estimates));
+export async function deleteList(listId: string): Promise<void> {
+  try {
+    const { error } = await supabase
+      .from(TABLES.LISTS)
+      .update({ status: 'Deleted' })
+      .eq('list_id', listId);
+    
+    if (error) {
+      console.error('Error deleting list:', error);
+      throw error;
+    }
+  } catch (error) {
+    console.error('Error in deleteList:', error);
+    throw error;
+  }
 }
 
-// Estimates
-export function getEstimates(): Estimate[] {
-  const data = localStorage.getItem(STORAGE_KEYS.ESTIMATES);
-  return data ? JSON.parse(data) : [];
+// Requirements Management
+export async function getRequirements(): Promise<Requirement[]> {
+  try {
+    const { data, error } = await supabase
+      .from(TABLES.REQUIREMENTS)
+      .select('*')
+      .eq('status', 'Active')
+      .order('created_on', { ascending: false });
+    
+    if (error) {
+      console.error('Error fetching requirements:', error);
+      return [];
+    }
+    
+    return data || [];
+  } catch (error) {
+    console.error('Error in getRequirements:', error);
+    return [];
+  }
 }
 
-export function getEstimatesByReqId(reqId: string): Estimate[] {
-  return getEstimates().filter(e => e.req_id === reqId).sort((a, b) => 
-    new Date(b.created_on).getTime() - new Date(a.created_on).getTime()
-  );
+export async function getRequirementsByListId(listId: string): Promise<Requirement[]> {
+  try {
+    const { data, error } = await supabase
+      .from(TABLES.REQUIREMENTS)
+      .select('*')
+      .eq('list_id', listId)
+      .eq('status', 'Active')
+      .order('created_on', { ascending: false });
+    
+    if (error) {
+      console.error('Error fetching requirements:', error);
+      return [];
+    }
+    
+    return data || [];
+  } catch (error) {
+    console.error('Error in getRequirementsByListId:', error);
+    return [];
+  }
 }
 
-export function getLatestEstimate(reqId: string): Estimate | undefined {
-  const estimates = getEstimatesByReqId(reqId);
+export async function saveRequirement(requirement: Requirement): Promise<void> {
+  try {
+    const { error } = await supabase
+      .from(TABLES.REQUIREMENTS)
+      .upsert(requirement, { onConflict: 'req_id' });
+    
+    if (error) {
+      console.error('Error saving requirement:', error);
+      throw error;
+    }
+  } catch (error) {
+    console.error('Error in saveRequirement:', error);
+    throw error;
+  }
+}
+
+export async function deleteRequirement(reqId: string): Promise<void> {
+  try {
+    const { error } = await supabase
+      .from(TABLES.REQUIREMENTS)
+      .update({ status: 'Deleted' })
+      .eq('req_id', reqId);
+    
+    if (error) {
+      console.error('Error deleting requirement:', error);
+      throw error;
+    }
+  } catch (error) {
+    console.error('Error in deleteRequirement:', error);
+    throw error;
+  }
+}
+
+// Estimates Management
+export async function getEstimates(): Promise<Estimate[]> {
+  try {
+    const { data, error } = await supabase
+      .from(TABLES.ESTIMATES)
+      .select('*')
+      .order('created_on', { ascending: false });
+    
+    if (error) {
+      console.error('Error fetching estimates:', error);
+      return [];
+    }
+    
+    return data || [];
+  } catch (error) {
+    console.error('Error in getEstimates:', error);
+    return [];
+  }
+}
+
+export async function getEstimatesByReqId(reqId: string): Promise<Estimate[]> {
+  try {
+    const { data, error } = await supabase
+      .from(TABLES.ESTIMATES)
+      .select('*')
+      .eq('req_id', reqId)
+      .order('created_on', { ascending: false });
+    
+    if (error) {
+      console.error('Error fetching estimates:', error);
+      return [];
+    }
+    
+    return data || [];
+  } catch (error) {
+    console.error('Error in getEstimatesByReqId:', error);
+    return [];
+  }
+}
+
+export async function getLatestEstimate(reqId: string): Promise<Estimate | undefined> {
+  const estimates = await getEstimatesByReqId(reqId);
   return estimates.length > 0 ? estimates[0] : undefined;
 }
 
-export function saveEstimate(estimate: Estimate): void {
-  const estimates = getEstimates();
-  const existingIndex = estimates.findIndex(e => e.estimate_id === estimate.estimate_id);
-  
-  if (existingIndex >= 0) {
-    estimates[existingIndex] = estimate;
-  } else {
-    estimates.push(estimate);
+export async function saveEstimate(estimate: Estimate): Promise<void> {
+  try {
+    // Update the requirement's last_estimated_on field
+    await supabase
+      .from(TABLES.REQUIREMENTS)
+      .update({ last_estimated_on: new Date().toISOString() })
+      .eq('req_id', estimate.req_id);
+
+    const { error } = await supabase
+      .from(TABLES.ESTIMATES)
+      .upsert(estimate, { onConflict: 'estimate_id' });
+    
+    if (error) {
+      console.error('Error saving estimate:', error);
+      throw error;
+    }
+  } catch (error) {
+    console.error('Error in saveEstimate:', error);
+    throw error;
   }
-  
-  localStorage.setItem(STORAGE_KEYS.ESTIMATES, JSON.stringify(estimates));
-  
-  // Update requirement's last_estimated_on
-  const requirement = getRequirements().find(r => r.req_id === estimate.req_id);
-  if (requirement) {
-    requirement.last_estimated_on = estimate.created_on;
-    saveRequirement(requirement);
+}
+
+// Catalog Data Management
+export async function getActivities(): Promise<Activity[]> {
+  try {
+    const { data, error } = await supabase
+      .from(TABLES.ACTIVITIES)
+      .select('*')
+      .eq('status', 'Active')
+      .order('driver_group', { ascending: true });
+    
+    if (error) {
+      console.error('Error fetching activities:', error);
+      return [];
+    }
+    
+    return data || [];
+  } catch (error) {
+    console.error('Error in getActivities:', error);
+    return [];
+  }
+}
+
+export async function getDrivers(): Promise<Driver[]> {
+  try {
+    const { data, error } = await supabase
+      .from(TABLES.DRIVERS)
+      .select('*')
+      .order('driver', { ascending: true });
+    
+    if (error) {
+      console.error('Error fetching drivers:', error);
+      return [];
+    }
+    
+    return data || [];
+  } catch (error) {
+    console.error('Error in getDrivers:', error);
+    return [];
+  }
+}
+
+export async function getRisks(): Promise<Risk[]> {
+  try {
+    const { data, error } = await supabase
+      .from(TABLES.RISKS)
+      .select('*')
+      .order('risk_id', { ascending: true });
+    
+    if (error) {
+      console.error('Error fetching risks:', error);
+      return [];
+    }
+    
+    return data || [];
+  } catch (error) {
+    console.error('Error in getRisks:', error);
+    return [];
+  }
+}
+
+export async function getContingencyBands(): Promise<ContingencyBand[]> {
+  try {
+    const { data, error } = await supabase
+      .from(TABLES.CONTINGENCY_BANDS)
+      .select('*')
+      .order('band_id', { ascending: true });
+    
+    if (error) {
+      console.error('Error fetching contingency bands:', error);
+      return [];
+    }
+    
+    return data || [];
+  } catch (error) {
+    console.error('Error in getContingencyBands:', error);
+    return [];
   }
 }
 
 // Export utilities
-export function generateExportData(listId: string, selectedReqIds?: string[]): ExportRow[] {
-  const list = getLists().find(l => l.list_id === listId);
-  if (!list) return [];
-  
-  const requirements = getRequirementsByListId(listId);
-  const filteredRequirements = selectedReqIds 
-    ? requirements.filter(r => selectedReqIds.includes(r.req_id))
-    : requirements;
-  
-  return filteredRequirements.map(req => {
-    const latestEstimate = getLatestEstimate(req.req_id);
+export async function generateExportData(listId: string, selectedReqIds?: string[]): Promise<ExportRow[]> {
+  try {
+    const lists = await getLists();
+    const list = lists.find(l => l.list_id === listId);
+    if (!list) return [];
     
-    return {
-      list_name: list.name,
-      req_id: req.req_id,
-      title: req.title,
-      priority: req.priority,
-      scenario: latestEstimate?.scenario || '',
-      complexity: latestEstimate?.complexity || '',
-      environments: latestEstimate?.environments || '',
-      reuse: latestEstimate?.reuse || '',
-      stakeholders: latestEstimate?.stakeholders || '',
-      subtotal_days: latestEstimate?.subtotal_days || 0,
-      contingency_pct: latestEstimate ? Math.round(latestEstimate.contingency_pct * 100) : 0,
-      total_days: latestEstimate?.total_days || 0,
-      estimator: req.estimator,
-      last_estimated_on: req.last_estimated_on || '',
-      state: req.state
-    };
-  });
+    const requirements = await getRequirementsByListId(listId);
+    const filteredRequirements = selectedReqIds 
+      ? requirements.filter(r => selectedReqIds.includes(r.req_id))
+      : requirements;
+    
+    const exportData: ExportRow[] = [];
+    
+    for (const req of filteredRequirements) {
+      const latestEstimate = await getLatestEstimate(req.req_id);
+      
+      exportData.push({
+        list_name: list.name,
+        req_id: req.req_id,
+        title: req.title,
+        priority: req.priority,
+        scenario: latestEstimate?.scenario || '',
+        complexity: latestEstimate?.complexity || '',
+        environments: latestEstimate?.environments || '',
+        reuse: latestEstimate?.reuse || '',
+        stakeholders: latestEstimate?.stakeholders || '',
+        subtotal_days: latestEstimate?.subtotal_days || 0,
+        contingency_pct: latestEstimate ? Math.round((latestEstimate.contingency_pct || 0) * 100) : 0,
+        total_days: latestEstimate?.total_days || 0,
+        estimator: (req as any).estimator || '',
+        last_estimated_on: req.last_estimated_on || '',
+        state: req.state
+      });
+    }
+    
+    return exportData;
+  } catch (error) {
+    console.error('Error generating export data:', error);
+    return [];
+  }
 }
 
 export function exportToCSV(data: ExportRow[]): string {
@@ -186,4 +366,42 @@ export function downloadCSV(filename: string, csvContent: string): void {
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
+}
+
+// Migration function to help transition from localStorage (if needed)
+export async function migrateFromLocalStorage(): Promise<void> {
+  try {
+    // Check if there's any localStorage data to migrate
+    const localLists = localStorage.getItem('requirement_lists');
+    const localRequirements = localStorage.getItem('requirements');
+    const localEstimates = localStorage.getItem('estimates');
+    
+    if (localLists) {
+      const lists: List[] = JSON.parse(localLists);
+      for (const list of lists) {
+        await saveList(list);
+      }
+      console.log(`Migrated ${lists.length} lists from localStorage`);
+    }
+    
+    if (localRequirements) {
+      const requirements: Requirement[] = JSON.parse(localRequirements);
+      for (const requirement of requirements) {
+        await saveRequirement(requirement);
+      }
+      console.log(`Migrated ${requirements.length} requirements from localStorage`);
+    }
+    
+    if (localEstimates) {
+      const estimates: Estimate[] = JSON.parse(localEstimates);
+      for (const estimate of estimates) {
+        await saveEstimate(estimate);
+      }
+      console.log(`Migrated ${estimates.length} estimates from localStorage`);
+    }
+    
+    console.log('Migration from localStorage completed successfully');
+  } catch (error) {
+    console.error('Error during migration:', error);
+  }
 }
