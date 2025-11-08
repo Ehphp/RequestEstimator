@@ -67,14 +67,6 @@ export async function deleteList(listId: string): Promise<void> {
     throw new Error('ID lista non valido');
   }
 
-  // ⚠️ IMPORTANTE: Questa funzione usa logica manuale di cascade delete
-  // DOPO l'applicazione delle Foreign Keys con ON DELETE CASCADE (migration 001),
-  // questa logica può essere rimossa e si può usare solo la delete della lista
-  // (le FK si occupano di eliminare automaticamente requirements ed estimates)
-
-  // TODO: Rimuovere Steps 2-4 quando FK CASCADE sono attive in produzione
-  // TODO: Tenere solo Step 1 (verifica esistenza) e Step 5 (delete lista)
-
   // Step 1: Verifica che la lista esista
   const { error: checkError } = await supabase
     .from(TABLES.LISTS)
@@ -89,46 +81,10 @@ export async function deleteList(listId: string): Promise<void> {
     throwDbError(checkError, 'Errore verifica lista');
   }
 
-  // Step 2: Recupera IDs requisiti per eliminazione stime
-  const { data: requirements, error: reqFetchError } = await supabase
-    .from(TABLES.REQUIREMENTS)
-    .select('req_id')
-    .eq('list_id', listId);
-
-  if (reqFetchError) {
-    throwDbError(reqFetchError, 'Impossibile recuperare i requisiti');
-  }
-
-  const requirementIds = (requirements || []).map(req => req.req_id);
-  logger.info(`Found ${requirementIds.length} requirements to delete`);
-
-  // Step 3: Elimina stime (se esistono requisiti)
-  if (requirementIds.length > 0) {
-    const { error: estimatesError } = await supabase
-      .from(TABLES.ESTIMATES)
-      .delete()
-      .in('req_id', requirementIds);
-
-    if (estimatesError) {
-      throwDbError(estimatesError, 'Impossibile eliminare le stime');
-    }
-    logger.info(`Deleted estimates for ${requirementIds.length} requirements`);
-  }
-
-  // Step 4: Elimina requisiti
-  if (requirementIds.length > 0) {
-    const { error: requirementsError } = await supabase
-      .from(TABLES.REQUIREMENTS)
-      .delete()
-      .eq('list_id', listId);
-
-    if (requirementsError) {
-      throwDbError(requirementsError, 'Impossibile eliminare i requisiti');
-    }
-    logger.info(`Deleted ${requirementIds.length} requirements`);
-  }
-
-  // Step 5: Elimina lista
+  // Step 2: Elimina lista
+  // Le Foreign Keys con ON DELETE CASCADE eliminano automaticamente:
+  // - requirements collegati
+  // - estimates collegati ai requirements
   const { error: deleteError } = await supabase
     .from(TABLES.LISTS)
     .delete()
@@ -139,7 +95,7 @@ export async function deleteList(listId: string): Promise<void> {
   }
 
   logCrud.delete('List', listId);
-  logger.info(`Successfully deleted list ${listId} with ${requirementIds.length} requirements`);
+  logger.info(`Successfully deleted list ${listId} (cascade handled by database)`);
 }
 
 // Requirements Management
@@ -175,14 +131,6 @@ export async function deleteRequirement(reqId: string): Promise<void> {
     throw new Error('ID requisito non valido');
   }
 
-  // ⚠️ IMPORTANTE: Questa funzione usa logica manuale di cascade delete
-  // DOPO l'applicazione delle Foreign Keys con ON DELETE CASCADE (migration 001),
-  // questa logica può essere rimossa e si può usare solo la delete del requisito
-  // (le FK si occupano di eliminare automaticamente estimates)
-
-  // TODO: Rimuovere Step 2 quando FK CASCADE sono attive in produzione
-  // TODO: Tenere solo Step 1 (verifica esistenza) e Step 3 (delete requisito)
-
   // Step 1: Verifica che il requisito esista
   const { error: checkError } = await supabase
     .from(TABLES.REQUIREMENTS)
@@ -197,17 +145,9 @@ export async function deleteRequirement(reqId: string): Promise<void> {
     throwDbError(checkError, 'Errore verifica requisito');
   }
 
-  // Step 2: Elimina stime associate
-  const { error: estimatesError } = await supabase
-    .from(TABLES.ESTIMATES)
-    .delete()
-    .eq('req_id', reqId);
-
-  if (estimatesError) {
-    throwDbError(estimatesError, 'Impossibile eliminare le stime');
-  }
-
-  // Step 3: Elimina requisito
+  // Step 2: Elimina requisito
+  // Le Foreign Keys con ON DELETE CASCADE eliminano automaticamente
+  // gli estimates collegati
   const { error: deleteError } = await supabase
     .from(TABLES.REQUIREMENTS)
     .delete()
@@ -218,7 +158,7 @@ export async function deleteRequirement(reqId: string): Promise<void> {
   }
 
   logCrud.delete('Requirement', reqId);
-  logger.info(`Successfully deleted requirement ${reqId}`);
+  logger.info(`Successfully deleted requirement ${reqId} (cascade handled by database)`);
 }
 
 // Estimates Management
@@ -292,14 +232,19 @@ export async function getLatestEstimates(reqIds: string[]): Promise<Record<strin
 }
 
 /**
- * Salva una stima nel database e aggiorna il timestamp del requisito.
+ * Salva una stima nel database.
+ * 
+ * NOTA: L'aggiornamento del campo last_estimated_on sul requirement
+ * è gestito automaticamente dal trigger database trg_update_requirement_timestamp
+ * (vedi migrations/003_triggers.sql). Non è necessario aggiornarlo manualmente
+ * per evitare race conditions.
  * 
  * @param estimate - La stima da salvare
- * @returns Object con success flag e eventuale messaggio di warning
- * @throws Se il salvataggio della stima fallisce completamente
+ * @returns Object con success flag
+ * @throws Se il salvataggio della stima fallisce
  */
-export async function saveEstimate(estimate: Estimate): Promise<{ success: true; warning?: string }> {
-  // Step 1: Salva l'estimate (operazione critica)
+export async function saveEstimate(estimate: Estimate): Promise<{ success: true }> {
+  // Salva l'estimate - il trigger database aggiorna automaticamente il requirement
   const { error: estimateError } = await supabase
     .from(TABLES.ESTIMATES)
     .upsert(estimate, { onConflict: 'estimate_id' });
@@ -309,28 +254,6 @@ export async function saveEstimate(estimate: Estimate): Promise<{ success: true;
   }
 
   logCrud.create('Estimate', estimate.estimate_id);
-
-  // Step 2: Aggiorna timestamp e estimator del requirement (non critico)
-  // ⚠️ NOTE: Con trigger database (migration 003), questo aggiornamento potrebbe
-  // essere gestito automaticamente dal trigger trg_update_requirement_timestamp
-  // Se trigger attivo, questo codice diventa ridondante ma non dannoso
-  const { error: updateError } = await supabase
-    .from(TABLES.REQUIREMENTS)
-    .update({
-      last_estimated_on: new Date().toISOString(),
-      estimator: estimate.created_on.split('T')[0] // Use estimate creator as estimator
-    })
-    .eq('req_id', estimate.req_id);
-
-  if (updateError) {
-    // L'estimate è salvata, ma timestamp non aggiornato
-    logger.error('Warning: Could not update requirement metadata (estimate was saved):', updateError);
-    return {
-      success: true,
-      warning: 'Stima salvata ma metadati requisito non aggiornati'
-    };
-  }
-
   return { success: true };
 }
 
@@ -512,8 +435,14 @@ export async function generateExportData(listId: string, selectedReqIds?: string
   return exportData;
 }/**
  * Escapes special characters in CSV fields to prevent corruption
- * Handles quotes, newlines, commas, and other special characters
- * @param value - String value to escape
+ * Handles quotes, newlines, tabs, commas, and leading/trailing whitespace
+ * 
+ * CSV Standard (RFC 4180):
+ * - Fields containing comma, newline, or double-quote must be quoted
+ * - Double-quotes within fields must be escaped by doubling them
+ * - Tabs and leading/trailing spaces should also be quoted
+ * 
+ * @param value - String, number, or null/undefined value to escape
  * @returns Safely escaped CSV value
  */
 function escapeCsvField(value: string | number | undefined | null): string {
@@ -524,12 +453,18 @@ function escapeCsvField(value: string | number | undefined | null): string {
 
   const stringValue = String(value);
 
-  // If field contains quotes, double them (CSV standard)
-  // If field contains comma, newline, or quotes, wrap in quotes
-  const needsQuotes = /[",\n\r]/.test(stringValue);
+  // Check for any character that needs escaping:
+  // - Double quotes (")
+  // - Commas (,) - main CSV separator
+  // - Newlines (\n, \r)
+  // - Tabs (\t) - can break Excel parsing
+  // - Leading/trailing whitespace (can cause parsing issues)
+  const needsQuotes = /[",\n\r\t]/.test(stringValue) ||
+    stringValue.startsWith(' ') ||
+    stringValue.endsWith(' ');
 
   if (needsQuotes) {
-    // Double any existing quotes and wrap the whole thing in quotes
+    // Escape double quotes by doubling them (CSV standard RFC 4180)
     return `"${stringValue.replace(/"/g, '""')}"`;
   }
 

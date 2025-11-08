@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
 import { ArrowLeft, Plus, Calendar, User, Tag, BarChart3, List as ListIcon, LayoutGrid, Search, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -11,6 +11,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Skeleton } from '@/components/ui/skeleton';
+import { EmptyState } from '@/components/ui/empty-state';
 import { useToast } from '@/hooks/use-toast';
 import { List, Requirement } from '../types';
 import { saveRequirement, generateId, getLatestEstimates } from '../lib/storage';
@@ -110,6 +112,7 @@ export function RequirementsList({
   onRequirementsChange
 }: RequirementsListProps) {
   const { toast } = useToast();
+  const titleInputRef = useRef<HTMLInputElement>(null);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [newRequirement, setNewRequirement] = useState<RequirementFormState>({
     title: '',
@@ -124,6 +127,13 @@ export function RequirementsList({
   const [estimatesLoaded, setEstimatesLoaded] = useState(false);
   const [filters, setFilters] = useState<RequirementFilters>(INITIAL_FILTERS);
   const [sortOption, setSortOption] = useState<SortOption>('created-desc');
+
+  // Focus management for dialog
+  useEffect(() => {
+    if (isAddDialogOpen && titleInputRef.current) {
+      setTimeout(() => titleInputRef.current?.focus(), 100);
+    }
+  }, [isAddDialogOpen]);
 
   useEffect(() => {
     let isMounted = true;
@@ -484,7 +494,7 @@ export function RequirementsList({
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <div className="flex items-center gap-4 bg-gradient-to-r from-primary/5 via-primary/10 to-transparent p-4 rounded-lg border">
         <Button variant="outline" onClick={onBack} className="hover:bg-background">
           <ArrowLeft className="h-4 w-4 mr-2" />
@@ -511,6 +521,7 @@ export function RequirementsList({
               <div>
                 <Label htmlFor="title">Titolo</Label>
                 <Input
+                  ref={titleInputRef}
                   id="title"
                   value={newRequirement.title}
                   onChange={(e) => setNewRequirement({ ...newRequirement, title: e.target.value })}
@@ -606,8 +617,8 @@ export function RequirementsList({
       </div>
 
       {/* Tabs per Lista/Dashboard */}
-      <Tabs defaultValue="list" className="w-full">
-        <TabsList className="grid w-full grid-cols-2 max-w-md mb-6 h-11 bg-muted/50">
+      <Tabs defaultValue="dashboard" className="w-full">
+        <TabsList className="grid w-full grid-cols-2 max-w-md mb-4 h-11 bg-muted/50">
           <TabsTrigger value="list" className="flex items-center gap-2 data-[state=active]:bg-background data-[state=active]:shadow-md">
             <ListIcon className="h-4 w-4" />
             Lista Requisiti
@@ -840,18 +851,18 @@ export function RequirementsList({
                 </div>
               )}
 
-              {visibleCount === 0 ? (
-                <Card className="text-center py-10 bg-gradient-to-br from-muted/20 to-background border-dashed">
-                  <CardContent>
-                    <h3 className="text-lg font-semibold mb-2">Nessun requisito corrisponde ai filtri</h3>
-                    <p className="text-muted-foreground text-sm mb-4">
-                      Modifica i criteri selezionati o reimposta i filtri per vedere di nuovo tutti i requisiti.
-                    </p>
-                    <Button onClick={handleResetFilters} variant="outline">
-                      Mostra tutti
-                    </Button>
-                  </CardContent>
-                </Card>
+              {!estimatesLoaded ? (
+                <Skeleton variant="card" count={6} className="mb-4" />
+              ) : visibleCount === 0 ? (
+                <EmptyState
+                  illustration="filter"
+                  title="Nessun requisito trovato"
+                  description="Prova a modificare i filtri di ricerca o reimposta tutti i criteri per vedere l'elenco completo dei requisiti."
+                  action={{
+                    label: "Reimposta filtri",
+                    onClick: handleResetFilters
+                  }}
+                />
               ) : (
                 <div className={viewMode === 'grid' ? 'grid gap-4 sm:grid-cols-2 xl:grid-cols-3' : 'grid gap-4'}>
                   {visibleRequirements.map(({ requirement, labels }) => {
@@ -882,6 +893,15 @@ export function RequirementsList({
                           key={requirement.req_id}
                           className={`h-full flex flex-col cursor-pointer transition-all duration-300 ${cardAccentClasses} hover:shadow-lg bg-gradient-to-br from-background to-muted/10`}
                           onClick={() => onSelectRequirement(requirement)}
+                          tabIndex={0}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              onSelectRequirement(requirement);
+                            }
+                          }}
+                          role="button"
+                          aria-label={`Apri requisito: ${requirement.title}`}
                         >
                           <CardHeader className="space-y-3 pb-4 flex flex-col flex-1">
                             <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
@@ -946,6 +966,15 @@ export function RequirementsList({
                         key={requirement.req_id}
                         className={`cursor-pointer hover:shadow-lg transition-all duration-300 ${cardAccentClasses} hover:scale-[1.01] bg-gradient-to-br from-background to-muted/20`}
                         onClick={() => onSelectRequirement(requirement)}
+                        tabIndex={0}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            onSelectRequirement(requirement);
+                          }
+                        }}
+                        role="button"
+                        aria-label={`Apri requisito: ${requirement.title}`}
                       >
                         <CardHeader className="pb-3">
                           <div className="flex items-start justify-between gap-4">

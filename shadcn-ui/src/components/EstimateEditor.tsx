@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { ArrowLeft, Save, Info, AlertCircle, Copy, Sparkles, RotateCcw, User, Calendar, Tag, TrendingUp } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -46,16 +46,22 @@ export function EstimateEditor({ requirement, list, onBack }: EstimateEditorProp
   const [defaultSources, setDefaultSources] = useState<DefaultSource[]>([]);
   const [overriddenFields, setOverriddenFields] = useState<Record<string, boolean>>({});
   const isInitializedRef = useRef(false);
+  const [autoCalcReady, setAutoCalcReady] = useState(false);
 
   useEffect(() => {
+    let isMounted = true;
+    setAutoCalcReady(false);
+
     const loadInitialData = async () => {
       // Load previous estimates asynchronously
       const estimates = await getEstimatesByReqId(requirement.req_id);
+      if (!isMounted) return;
       setPreviousEstimates(estimates);
 
       if (!isInitializedRef.current) {
         // Apply smart defaults on first load
         const { defaults, sources } = await getEstimateDefaults(requirement, list, currentUser);
+        if (!isMounted) return;
 
         setScenario(defaults.scenario || 'A');
         setComplexity(defaults.complexity || '');
@@ -69,9 +75,17 @@ export function EstimateEditor({ requirement, list, onBack }: EstimateEditorProp
         setDefaultSources(sources);
         isInitializedRef.current = true;
       }
+
+      if (isMounted) {
+        setAutoCalcReady(true);
+      }
     };
 
     loadInitialData();
+
+    return () => {
+      isMounted = false;
+    };
   }, [requirement.req_id, list, currentUser]);
 
   const groupedActivities = activities.reduce((groups, activity) => {
@@ -80,11 +94,19 @@ export function EstimateEditor({ requirement, list, onBack }: EstimateEditorProp
     groups[group].push(activity);
     return groups;
   }, {} as Record<string, Activity[]>);
+  const selectedActivityObjects = useMemo(
+    () => activities.filter(a => selectedActivities.includes(a.activity_code)),
+    [selectedActivities]
+  );
 
-  const handleCalculate = () => {
-    const selectedActivityObjects = activities.filter(a => selectedActivities.includes(a.activity_code));
-
-    const validationErrors = validateEstimate(complexity, environments, reuse, stakeholders, selectedActivityObjects);
+  const calculateAndUpdateEstimate = useCallback(() => {
+    const validationErrors = validateEstimate(
+      complexity,
+      environments,
+      reuse,
+      stakeholders,
+      selectedActivityObjects
+    );
 
     if (validationErrors.length > 0) {
       setErrors(validationErrors);
@@ -109,11 +131,16 @@ export function EstimateEditor({ requirement, list, onBack }: EstimateEditorProp
       setErrors([error instanceof Error ? error.message : 'Errore nel calcolo']);
       setCalculatedEstimate(null);
     }
-  };
+  }, [complexity, environments, reuse, stakeholders, selectedActivityObjects, selectedRisks]);
+
+  useEffect(() => {
+    if (!autoCalcReady) return;
+    calculateAndUpdateEstimate();
+  }, [autoCalcReady, calculateAndUpdateEstimate]);
 
   const handleSave = async () => {
     if (!calculatedEstimate) {
-      setErrors(['Calcola prima la stima prima di salvare']);
+      setErrors(['Completa i parametri per generare la stima automatica prima di salvare']);
       return;
     }
 
@@ -157,7 +184,7 @@ export function EstimateEditor({ requirement, list, onBack }: EstimateEditorProp
       ...calculatedEstimate
     } as Estimate;
 
-    const result = await saveEstimate(estimate);
+    await saveEstimate(estimate);
 
     // Update sticky defaults for future estimates
     await updateStickyDefaults(currentUser, list.list_id, {
@@ -168,13 +195,10 @@ export function EstimateEditor({ requirement, list, onBack }: EstimateEditorProp
       included_activities: selectedActivities
     });
 
-    // Show success toast with optional warning
+    // Show success toast
     toast({
       title: 'Stima salvata',
-      description: result.warning
-        ? `${result.warning}. Totale: ${calculatedEstimate.total_days} giorni`
-        : `Totale: ${calculatedEstimate.total_days} giorni`,
-      variant: result.warning ? 'default' : 'default',
+      description: `Totale: ${calculatedEstimate.total_days} giorni`,
     });
     onBack();
   };
@@ -466,7 +490,7 @@ export function EstimateEditor({ requirement, list, onBack }: EstimateEditorProp
               )}
             </div>
           </CardHeader>
-          <CardContent className="space-y-3">
+          <CardContent className="space-y-2">
             {Object.entries(groupedActivities).map(([group, groupActivities]) => (
               <div key={group}>
                 <h4 className="font-semibold text-sm mb-2 text-primary">{group}</h4>
@@ -606,16 +630,19 @@ export function EstimateEditor({ requirement, list, onBack }: EstimateEditorProp
 
           {/* Summary - Now More Prominent */}
           <Card className="border-2 border-primary bg-primary/5">
-            <CardHeader className="pb-3">
+            <CardHeader className="pb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <CardTitle className="text-lg text-primary">Riepilogo Calcolo</CardTitle>
+              <Badge variant="outline" className="text-xs uppercase tracking-wide text-primary border-primary/40 bg-white">
+                Calcolo automatico
+              </Badge>
             </CardHeader>
             <CardContent className="space-y-3">
-              <Button onClick={handleCalculate} className="w-full" size="lg">
-                <Info className="h-4 w-4 mr-2" />
-                Calcola Stima
-              </Button>
+              <div className="flex items-center gap-2 rounded-md border border-dashed border-primary/30 bg-primary/10 px-3 py-2 text-sm text-muted-foreground">
+                <Sparkles className="h-4 w-4 text-primary" />
+                <span>La stima si aggiorna automaticamente ad ogni modifica dei parametri.</span>
+              </div>
 
-              {calculatedEstimate && (
+              {calculatedEstimate ? (
                 <div className="space-y-3">
                   <div className="grid grid-cols-2 gap-3 text-sm">
                     <div className="text-center p-2 bg-muted rounded">
@@ -680,6 +707,10 @@ export function EstimateEditor({ requirement, list, onBack }: EstimateEditorProp
                     Salva Stima
                   </Button>
                 </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  Compila i driver e seleziona almeno un'attivita per vedere il totale.
+                </p>
               )}
             </CardContent>
           </Card>

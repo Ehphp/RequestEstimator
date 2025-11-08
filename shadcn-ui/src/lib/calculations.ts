@@ -1,8 +1,16 @@
 import { drivers, risks, contingencyBands } from '../data/catalog';
 import { Estimate, Activity, RequirementWithEstimate, DashboardKPI, Requirement } from '../types';
 import { getLatestEstimates } from './storage';
+import {
+  RISK_THRESHOLDS,
+  CONTINGENCY_RATES,
+  COMPLEXITY_TO_DIFFICULTY,
+  DEFAULT_DIFFICULTY,
+  PRECISION,
+  CATALOG_VERSIONS
+} from './constants';
 
-export function roundHalfUp(num: number, decimals: number): number {
+export function roundHalfUp(num: number, decimals: number = PRECISION.DAYS_DECIMALS): number {
   const factor = Math.pow(10, decimals);
   return Math.round((num + Number.EPSILON) * factor) / factor;
 }
@@ -39,42 +47,39 @@ export function calculateRiskScore(selectedRiskIds: string[]): number {
 
 /**
  * Calcola la percentuale di contingenza basata sul risk score.
- * Utilizza i contingency bands definiti nel catalog per consistenza.
+ * Utilizza le soglie definite in constants.ts per consistenza.
  * 
  * Logica:
  * - Risk score 0: Nessuna contingenza (0%)
- * - Risk score 1-10: Low band (default 10%)
- * - Risk score 11-20: Medium band (default 20%)
- * - Risk score 21+: High band (default 35%)
+ * - Risk score 1-10: Low band (10%)
+ * - Risk score 11-20: Medium band (20%)
+ * - Risk score 21+: High band (35%)
  * - Cap massimo: 50%
  * 
  * @param riskScore - Peso totale dei rischi selezionati
  * @returns Percentuale di contingenza (0-0.50)
  */
 export function getContingencyPercentage(riskScore: number): number {
-  let contingencyPct = 0;
+  let contingencyPct: number = CONTINGENCY_RATES.NONE;
 
-  if (riskScore === 0) {
-    // BUG FIX: Zero rischi = 0% contingenza (non 5%)
-    contingencyPct = 0;
-  } else if (riskScore <= 10) {
+  if (riskScore === RISK_THRESHOLDS.NONE) {
+    contingencyPct = CONTINGENCY_RATES.NONE;
+  } else if (riskScore <= RISK_THRESHOLDS.LOW) {
     // Low risk band
     const lowBand = contingencyBands.find(b => b.band === 'Low');
-    contingencyPct = lowBand?.contingency_pct || 0.10;
-  } else if (riskScore <= 20) {
+    contingencyPct = lowBand?.contingency_pct || CONTINGENCY_RATES.LOW;
+  } else if (riskScore <= RISK_THRESHOLDS.MEDIUM) {
     // Medium risk band
     const mediumBand = contingencyBands.find(b => b.band === 'Medium');
-    contingencyPct = mediumBand?.contingency_pct || 0.20;
+    contingencyPct = mediumBand?.contingency_pct || CONTINGENCY_RATES.MEDIUM;
   } else {
     // High risk band (21+)
     const highBand = contingencyBands.find(b => b.band === 'High');
-    contingencyPct = highBand?.contingency_pct || 0.35;
+    contingencyPct = highBand?.contingency_pct || CONTINGENCY_RATES.HIGH;
   }
 
-  // Cap at maximum 50% contingency
-  const finalPct = Math.min(contingencyPct, 0.50);
-
-  return finalPct;
+  // Cap at maximum contingency
+  return Math.min(contingencyPct, CONTINGENCY_RATES.MAX);
 }
 
 export function calculateEstimate(
@@ -105,16 +110,16 @@ export function calculateEstimate(
   const totalDays = subtotalDays + contingencyDays;
 
   const result = {
-    activities_base_days: roundHalfUp(activitiesBaseDays, 3),
-    driver_multiplier: roundHalfUp(driverMultiplier, 3),
+    activities_base_days: roundHalfUp(activitiesBaseDays, PRECISION.DAYS_DECIMALS),
+    driver_multiplier: roundHalfUp(driverMultiplier, PRECISION.MULTIPLIER_DECIMALS),
     subtotal_days: subtotalDays,
     risk_score: riskScore,
     contingency_pct: contingencyPct,
     contingency_days: contingencyDays,
-    total_days: roundHalfUp(totalDays, 3),
-    catalog_version: 'v1.0',
-    drivers_version: 'v1.0',
-    riskmap_version: 'v1.0'
+    total_days: roundHalfUp(totalDays, PRECISION.DAYS_DECIMALS),
+    catalog_version: CATALOG_VERSIONS.ACTIVITIES,
+    drivers_version: CATALOG_VERSIONS.DRIVERS,
+    riskmap_version: CATALOG_VERSIONS.RISKS
   };
 
   return result;
@@ -125,15 +130,11 @@ export function calculateEstimate(
 // ============================================================================
 
 /**
- * Mappa complexity in difficulty numerica
+ * Mappa complexity in difficulty numerica usando le costanti definite
  */
 export function mapComplexityToDifficulty(complexity: string): 1 | 2 | 3 | 4 | 5 {
-  switch (complexity) {
-    case 'Low': return 2;
-    case 'Medium': return 3;
-    case 'High': return 5;
-    default: return 3;
-  }
+  const mapping = COMPLEXITY_TO_DIFFICULTY[complexity as keyof typeof COMPLEXITY_TO_DIFFICULTY];
+  return (mapping || DEFAULT_DIFFICULTY) as 1 | 2 | 3 | 4 | 5;
 }
 
 /**

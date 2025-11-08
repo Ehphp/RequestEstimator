@@ -45,7 +45,7 @@ export default function Index() {
   }, []);
 
   const loadLists = async (options?: { autoSelectFirst?: boolean }): Promise<List[]> => {
-    const { autoSelectFirst = true } = options || {};
+    const { autoSelectFirst = false } = options || {};
     try {
       setLoading(true);
       setError(null);

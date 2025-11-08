@@ -6,7 +6,7 @@ export interface List {
   preset_key?: string;
   created_on: string;
   created_by: string;
-  status: 'Active' | 'Archived';
+  status: 'Draft' | 'Active' | 'Archived';
   // Additional business fields
   owner?: string;
   period?: string;
@@ -170,7 +170,6 @@ export interface DashboardFilters {
   nDevelopers: number;
   excludeWeekends: boolean;
   holidays: string[];
-  colorBy: 'priority' | 'tag';
 }
 
 export interface DashboardKPI {
@@ -218,21 +217,10 @@ export interface ScenarioConfig {
   nDevelopers: number;
   excludeWeekends: boolean;
   holidays: string[];
-  mode: 'Splittable' | 'Indivisible';
-  priorityPolicy: 'Neutral' | 'PriorityFirst' | 'CapacitySplit';
-  capacityShare?: {
-    High: number;
-    Med: number;
-    Low: number;
-  };
+  priorityPolicy: 'Neutral' | 'PriorityFirst';
 }
 
 export interface ProjectionResult {
   finishDate: string;
   totalWorkdays: number;
-  milestones?: {
-    finishHigh?: string;
-    finishMed?: string;
-    finishLow?: string;
-  };
 }

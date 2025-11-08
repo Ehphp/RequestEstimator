@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Plus, FileDown, Eye, Edit, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -31,13 +31,20 @@ export function ListsView({ onSelectList }: ListsViewProps) {
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [editingList, setEditingList] = useState<List | null>(null);
   const [exportListId, setExportListId] = useState<string | null>(null);
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<{
+    name: string;
+    owner: string;
+    period: string;
+    notes: string;
+    status: List['status'];
+    preset_key: string;
+  }>({
     name: '',
     owner: '',
     period: '',
     notes: '',
-    status: 'Draft' as const,
-    preset_key: 'none' as string
+    status: 'Draft',
+    preset_key: 'none'
   });
   const [defaultSources, setDefaultSources] = useState<Record<string, string>>({});
   const [overriddenFields, setOverriddenFields] = useState<Record<string, boolean>>({});
@@ -122,7 +129,8 @@ export function ListsView({ onSelectList }: ListsViewProps) {
       list_id: editingList?.list_id || `LIST-${Date.now()}`,
       ...formData,
       preset_key: formData.preset_key === 'none' ? undefined : formData.preset_key as List['preset_key'],
-      created_on: editingList?.created_on || new Date().toISOString()
+      created_on: editingList?.created_on || new Date().toISOString(),
+      created_by: editingList?.created_by || currentUser
     };
 
     try {
@@ -138,10 +146,10 @@ export function ListsView({ onSelectList }: ListsViewProps) {
     const defaults = getListDefaults(currentUser);
     setFormData({
       name: '',
-      owner: defaults.owner || '',
-      period: defaults.period || '',
-      notes: defaults.notes || '',
-      status: defaults.status || 'Draft',
+      owner: defaults.owner ?? '',
+      period: defaults.period ?? '',
+      notes: defaults.notes ?? '',
+      status: defaults.status ?? 'Draft',
       preset_key: 'none'
     });
     setDefaultSources({
@@ -163,9 +171,9 @@ export function ListsView({ onSelectList }: ListsViewProps) {
     setEditingList(list);
     setFormData({
       name: list.name,
-      owner: list.owner,
-      period: list.period,
-      notes: list.notes,
+      owner: list.owner ?? '',
+      period: list.period ?? '',
+      notes: list.notes ?? '',
       status: list.status,
       preset_key: list.preset_key || 'none'
     });
