@@ -1,11 +1,29 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, FileText, Calendar, User, Tag, AlertCircle, Loader2 } from 'lucide-react';
+import { Plus, FileText, Calendar, User, Tag, AlertCircle, Loader2, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { List, Requirement } from '../types';
-import { getLists, getRequirementsByListId, generateId, saveList, migrateFromLocalStorage } from '../lib/storage';
+import {
+  getLists,
+  getRequirementsByListId,
+  generateId,
+  saveList,
+  deleteList,
+} from '../lib/storage';
+import { getPriorityColor, getStateColor } from '@/lib/utils';
+import { logger } from '@/lib/logger';
 import { RequirementsList } from '../components/RequirementsList';
 import { EstimateEditor } from '../components/EstimateEditor';
 
@@ -16,32 +34,34 @@ export default function Index() {
   const [requirements, setRequirements] = useState<Requirement[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [listPendingDeletion, setListPendingDeletion] = useState<List | null>(null);
+  const [deleteMetadataLoading, setDeleteMetadataLoading] = useState(false);
+  const [pendingRequirementCount, setPendingRequirementCount] = useState<number | null>(null);
+  const [deleteInProgress, setDeleteInProgress] = useState(false);
 
   useEffect(() => {
     loadLists();
   }, []);
 
-  const loadLists = async () => {
+  const loadLists = async (options?: { autoSelectFirst?: boolean }): Promise<List[]> => {
+    const { autoSelectFirst = true } = options || {};
     try {
       setLoading(true);
       setError(null);
-      
-      // Check if this is the first time loading and migrate if needed
-      const existingLists = await getLists();
-      if (existingLists.length === 0) {
-        console.log('No lists found in Supabase, checking for localStorage migration...');
-        await migrateFromLocalStorage();
-      }
-      
+
       const listsData = await getLists();
       setLists(listsData);
-      
-      if (listsData.length > 0 && !selectedList) {
+
+      if (autoSelectFirst && listsData.length > 0 && !selectedList) {
         setSelectedList(listsData[0]);
       }
+
+      return listsData;
     } catch (err) {
-      console.error('Error loading lists:', err);
+      logger.error('Error loading lists:', err);
       setError('Errore nel caricamento delle liste. Verifica la connessione a Supabase.');
+      return [];
     } finally {
       setLoading(false);
     }
@@ -53,7 +73,7 @@ export default function Index() {
       const requirementsData = await getRequirementsByListId(listId);
       setRequirements(requirementsData);
     } catch (err) {
-      console.error('Error loading requirements:', err);
+      logger.error('Error loading requirements:', err);
       setError('Errore nel caricamento dei requisiti.');
     }
   };
@@ -75,12 +95,12 @@ export default function Index() {
         created_by: 'current.user@example.com',
         status: 'Active'
       };
-      
+
       await saveList(newList);
       await loadLists();
       setSelectedList(newList);
     } catch (err) {
-      console.error('Error creating new list:', err);
+      logger.error('Error creating new list:', err);
       setError('Errore nella creazione della nuova lista.');
     }
   };
@@ -108,22 +128,49 @@ export default function Index() {
     setRequirements([]);
   };
 
-  const getPriorityColor = (priority: string) => {
-    switch (priority) {
-      case 'High': return 'bg-red-100 text-red-800';
-      case 'Med': return 'bg-yellow-100 text-yellow-800';
-      case 'Low': return 'bg-green-100 text-green-800';
-      default: return 'bg-gray-100 text-gray-800';
+  const openDeleteDialog = async (list: List) => {
+    setListPendingDeletion(list);
+    setDeleteDialogOpen(true);
+    setPendingRequirementCount(null);
+    setDeleteMetadataLoading(true);
+    try {
+      const requirements = await getRequirementsByListId(list.list_id);
+      setPendingRequirementCount(requirements.length);
+    } catch (err) {
+      logger.error('Error counting requirements for list:', err);
+      setError('Impossibile recuperare il numero di requisiti associati alla lista selezionata.');
+    } finally {
+      setDeleteMetadataLoading(false);
     }
   };
 
-  const getStateColor = (state: string) => {
-    switch (state) {
-      case 'Proposed': return 'bg-blue-100 text-blue-800';
-      case 'Selected': return 'bg-purple-100 text-purple-800';
-      case 'Scheduled': return 'bg-orange-100 text-orange-800';
-      case 'Done': return 'bg-green-100 text-green-800';
-      default: return 'bg-gray-100 text-gray-800';
+  const closeDeleteDialog = () => {
+    setDeleteDialogOpen(false);
+    setListPendingDeletion(null);
+    setPendingRequirementCount(null);
+    setDeleteMetadataLoading(false);
+    setDeleteInProgress(false);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!listPendingDeletion) return;
+    const deletingSelectedList = selectedList?.list_id === listPendingDeletion.list_id;
+    try {
+      setDeleteInProgress(true);
+      setError(null);
+      await deleteList(listPendingDeletion.list_id);
+      if (deletingSelectedList) {
+        setSelectedRequirement(null);
+        setSelectedList(null);
+        setRequirements([]);
+      }
+      await loadLists({ autoSelectFirst: !deletingSelectedList });
+      closeDeleteDialog();
+    } catch (err) {
+      logger.error('Error deleting list:', err);
+      setError('Errore durante l\'eliminazione della lista selezionata.');
+    } finally {
+      setDeleteInProgress(false);
     }
   };
 
@@ -206,22 +253,35 @@ export default function Index() {
         ) : (
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
             {lists.map((list) => (
-              <Card 
-                key={list.list_id} 
+              <Card
+                key={list.list_id}
                 className="cursor-pointer hover:shadow-lg transition-shadow"
                 onClick={() => handleSelectList(list)}
               >
                 <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <FileText className="h-5 w-5" />
-                    {list.name}
+                  <CardTitle className="flex items-center justify-between gap-2">
+                    <span className="flex items-center gap-2">
+                      <FileText className="h-5 w-5" />
+                      {list.name}
+                    </span>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        openDeleteDialog(list);
+                      }}
+                      aria-label={`Elimina ${list.name}`}
+                    >
+                      <Trash2 className="h-4 w-4 text-red-500" />
+                    </Button>
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
                   <p className="text-gray-600 text-sm mb-4 line-clamp-2">
                     {list.description}
                   </p>
-                  
+
                   <div className="flex flex-wrap gap-2 text-xs text-gray-500">
                     <div className="flex items-center gap-1">
                       <Calendar className="h-3 w-3" />
@@ -243,6 +303,62 @@ export default function Index() {
             ))}
           </div>
         )}
+
+        <AlertDialog
+          open={deleteDialogOpen}
+          onOpenChange={(open) => {
+            if (!open && deleteDialogOpen && !deleteInProgress) {
+              closeDeleteDialog();
+            }
+          }}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Elimina lista</AlertDialogTitle>
+              <AlertDialogDescription>
+                {listPendingDeletion ? (
+                  deleteMetadataLoading ? (
+                    'Calcolo del numero di requisiti associati...'
+                  ) : (
+                    <>
+                      La lista{' '}
+                      <span className="font-semibold text-foreground">
+                        {listPendingDeletion.name}
+                      </span>{' '}
+                      contiene{' '}
+                      <span className="font-semibold text-red-600">
+                        {pendingRequirementCount ?? 0}{' '}
+                        {pendingRequirementCount === 1 ? 'requisito' : 'requisiti'}
+                      </span>
+                      . Verranno eliminati anche i dati di stima collegati. L’operazione è irreversibile.
+                    </>
+                  )
+                ) : (
+                  'Seleziona una lista da eliminare.'
+                )}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={deleteInProgress} onClick={closeDeleteDialog}>
+                Annulla
+              </AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handleConfirmDelete}
+                disabled={deleteInProgress || deleteMetadataLoading || !listPendingDeletion}
+                className="bg-red-600 text-white hover:bg-red-700"
+              >
+                {deleteInProgress ? (
+                  <span className="flex items-center gap-2">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Eliminazione...
+                  </span>
+                ) : (
+                  'Elimina definitivamente'
+                )}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     </div>
   );

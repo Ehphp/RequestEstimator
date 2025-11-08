@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { List, Requirement, DefaultSource } from '../types';
 import { getLists, getRequirementsByListId, saveRequirement, deleteRequirement, getLatestEstimate } from '../lib/storage';
 import { getRequirementDefaults } from '../lib/defaults';
+import { getPriorityColor, getStateColor } from '@/lib/utils';
 import { DefaultPill } from './DefaultPill';
 import { EstimateEditor } from './EstimateEditor';
 
@@ -43,20 +44,21 @@ export function RequirementsView({ listId, onBack }: RequirementsViewProps) {
     loadData();
   }, [listId]);
 
-  const loadData = () => {
-    const lists = getLists();
+  const loadData = async () => {
+    const lists = await getLists();
     const currentList = lists.find(l => l.list_id === listId);
     setList(currentList || null);
-    setRequirements(getRequirementsByListId(listId));
+    const reqs = await getRequirementsByListId(listId);
+    setRequirements(reqs);
   };
 
   const handleTitleChange = (title: string) => {
     setFormData(prev => ({ ...prev, title }));
-    
+
     if (!editingRequirement && list && title.trim()) {
       // Apply smart defaults when title changes
       const { defaults, sources } = getRequirementDefaults(list, currentUser, title);
-      
+
       // Update form data with defaults (only for non-overridden fields)
       if (!overriddenFields.priority && defaults.priority) {
         setFormData(prev => ({ ...prev, priority: defaults.priority as Requirement['priority'] }));
@@ -73,14 +75,14 @@ export function RequirementsView({ listId, onBack }: RequirementsViewProps) {
       if (!overriddenFields.estimator && defaults.estimator) {
         setFormData(prev => ({ ...prev, estimator: defaults.estimator }));
       }
-      
+
       setDefaultSources(sources);
     }
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     const requirementData: Requirement = {
       req_id: editingRequirement?.req_id || `REQ-${Date.now()}`,
       list_id: listId,
@@ -95,7 +97,7 @@ export function RequirementsView({ listId, onBack }: RequirementsViewProps) {
       description_default_source: overriddenFields.description ? undefined : defaultSources.find(s => s.field === 'description')?.source,
       description_is_overridden: overriddenFields.description || false
     };
-    
+
     saveRequirement(requirementData);
     loadData();
     resetForm();
@@ -165,11 +167,11 @@ export function RequirementsView({ listId, onBack }: RequirementsViewProps) {
       ...prev,
       [field]: !prev[field]
     }));
-    
+
     if (!overriddenFields[field] && list) {
       // If switching back to default, recalculate defaults
       const { defaults } = getRequirementDefaults(list, currentUser, formData.title);
-      
+
       if (field === 'priority' && defaults.priority) {
         setFormData(prev => ({ ...prev, priority: defaults.priority as Requirement['priority'] }));
       }
@@ -255,7 +257,7 @@ export function RequirementsView({ listId, onBack }: RequirementsViewProps) {
                   required
                 />
               </div>
-              
+
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <Label htmlFor="description">Descrizione</Label>
@@ -276,7 +278,7 @@ export function RequirementsView({ listId, onBack }: RequirementsViewProps) {
                   required
                 />
               </div>
-              
+
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <div className="flex items-center justify-between mb-2">
@@ -289,8 +291,8 @@ export function RequirementsView({ listId, onBack }: RequirementsViewProps) {
                       />
                     )}
                   </div>
-                  <Select 
-                    value={formData.priority} 
+                  <Select
+                    value={formData.priority}
                     onValueChange={(value: Requirement['priority']) => setFormData({ ...formData, priority: value })}
                   >
                     <SelectTrigger>
@@ -305,8 +307,8 @@ export function RequirementsView({ listId, onBack }: RequirementsViewProps) {
                 </div>
                 <div>
                   <Label htmlFor="state">Stato</Label>
-                  <Select 
-                    value={formData.state} 
+                  <Select
+                    value={formData.state}
                     onValueChange={(value: Requirement['state']) => setFormData({ ...formData, state: value })}
                   >
                     <SelectTrigger>
@@ -321,7 +323,7 @@ export function RequirementsView({ listId, onBack }: RequirementsViewProps) {
                   </Select>
                 </div>
               </div>
-              
+
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label htmlFor="business_owner">Business Owner</Label>
@@ -344,7 +346,7 @@ export function RequirementsView({ listId, onBack }: RequirementsViewProps) {
                   />
                 </div>
               </div>
-              
+
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <Label htmlFor="labels">Labels (separati da virgola)</Label>
@@ -363,7 +365,7 @@ export function RequirementsView({ listId, onBack }: RequirementsViewProps) {
                   placeholder="es. HR, Notifiche, Critical"
                 />
               </div>
-              
+
               <div className="flex gap-2">
                 <Button type="submit" className="flex-1">
                   {editingRequirement ? 'Aggiorna' : 'Crea'}
@@ -415,7 +417,7 @@ export function RequirementsView({ listId, onBack }: RequirementsViewProps) {
               </CardHeader>
               <CardContent className="space-y-4">
                 <p className="text-sm line-clamp-2">{requirement.description}</p>
-                
+
                 {latestEstimate && (
                   <div className="bg-muted p-3 rounded-lg">
                     <div className="grid grid-cols-3 gap-4 text-sm">
@@ -443,7 +445,7 @@ export function RequirementsView({ listId, onBack }: RequirementsViewProps) {
                     )}
                   </div>
                 )}
-                
+
                 {requirement.labels && (
                   <div className="flex flex-wrap gap-1">
                     {requirement.labels.split(',').map((label, index) => (
@@ -453,7 +455,7 @@ export function RequirementsView({ listId, onBack }: RequirementsViewProps) {
                     ))}
                   </div>
                 )}
-                
+
                 <div className="flex gap-2">
                   <Button
                     size="sm"

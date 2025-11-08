@@ -1,32 +1,30 @@
 import { List, Requirement, Estimate, StickyDefaults, DefaultSource } from '../types';
 import { presets, getCurrentQuarter, inferPriorityFromTitle, inferLabelsFromTitle, inferStakeholdersFromLabels, shouldIncludeOptionalActivities, inferRisksFromTitle } from '../data/presets';
+import { getStickyDefaults as getSupabaseStickyDefaults, saveStickyDefaults as saveSupabaseStickyDefaults } from './storage';
+import { logger } from './logger';
 
-const STORAGE_KEYS = {
-  STICKY_DEFAULTS: 'sticky_defaults'
-};
-
-// Sticky defaults management
-export function getStickyDefaults(user: string, listId: string): StickyDefaults | null {
-  const data = localStorage.getItem(STORAGE_KEYS.STICKY_DEFAULTS);
-  if (!data) return null;
-  
-  const stickyDefaults: StickyDefaults[] = JSON.parse(data);
-  return stickyDefaults.find(s => s.user === user && s.list_id === listId) || null;
+// Sticky defaults management (now using Supabase)
+export async function getStickyDefaults(user: string, listId: string): Promise<StickyDefaults | null> {
+  try {
+    return await getSupabaseStickyDefaults(user, listId);
+  } catch (error) {
+    logger.error('Error getting sticky defaults:', error);
+    return null;
+  }
 }
 
-export function saveStickyDefaults(sticky: StickyDefaults): void {
-  const data = localStorage.getItem(STORAGE_KEYS.STICKY_DEFAULTS);
-  const stickyDefaults: StickyDefaults[] = data ? JSON.parse(data) : [];
-  
-  const existingIndex = stickyDefaults.findIndex(s => s.user === sticky.user && s.list_id === sticky.list_id);
-  
-  if (existingIndex >= 0) {
-    stickyDefaults[existingIndex] = { ...sticky, last_updated: new Date().toISOString() };
-  } else {
-    stickyDefaults.push({ ...sticky, last_updated: new Date().toISOString() });
+export async function saveStickyDefaults(sticky: StickyDefaults): Promise<void> {
+  try {
+    // Assicurati che last_updated sia presente
+    const updatedSticky = {
+      ...sticky,
+      updated_on: new Date().toISOString()
+    };
+    await saveSupabaseStickyDefaults(updatedSticky);
+  } catch (error) {
+    logger.error('Error saving sticky defaults:', error);
+    throw error;
   }
-  
-  localStorage.setItem(STORAGE_KEYS.STICKY_DEFAULTS, JSON.stringify(stickyDefaults));
 }
 
 // List defaults
@@ -34,7 +32,7 @@ export function getListDefaults(currentUser: string): Partial<List> {
   return {
     period: getCurrentQuarter(),
     owner: currentUser,
-    status: 'Draft',
+    status: 'Active',
     notes: ''
   };
 }
@@ -47,7 +45,7 @@ export function getRequirementDefaults(
 ): { defaults: Partial<Requirement>; sources: DefaultSource[] } {
   const preset = list.preset_key ? presets.find(p => p.preset_key === list.preset_key) : null;
   const sources: DefaultSource[] = [];
-  
+
   // Priority from title analysis
   const inferredPriority = inferPriorityFromTitle(title);
   sources.push({
@@ -56,7 +54,7 @@ export function getRequirementDefaults(
     source: title ? 'Keyword Analysis' : 'Default',
     is_overridden: false
   });
-  
+
   // Labels from title analysis
   const inferredLabels = inferLabelsFromTitle(title);
   const labelsString = inferredLabels.join(', ');
@@ -68,7 +66,7 @@ export function getRequirementDefaults(
       is_overridden: false
     });
   }
-  
+
   // Description from preset
   let description = '';
   if (preset) {
@@ -80,7 +78,7 @@ export function getRequirementDefaults(
       is_overridden: false
     });
   }
-  
+
   const defaults: Partial<Requirement> = {
     priority: inferredPriority as Requirement['priority'],
     business_owner: list.owner,
@@ -96,20 +94,20 @@ export function getRequirementDefaults(
     description_default_source: preset ? `Preset: ${preset.name}` : undefined,
     description_is_overridden: false
   };
-  
+
   return { defaults, sources };
 }
 
 // Estimate defaults
-export function getEstimateDefaults(
+export async function getEstimateDefaults(
   requirement: Requirement,
   list: List,
   currentUser: string
-): { defaults: Partial<Estimate>; sources: DefaultSource[] } {
+): Promise<{ defaults: Partial<Estimate>; sources: DefaultSource[] }> {
   const preset = list.preset_key ? presets.find(p => p.preset_key === list.preset_key) : null;
-  const sticky = getStickyDefaults(currentUser, list.list_id);
+  const sticky = await getStickyDefaults(currentUser, list.list_id);  // Ora è async
   const sources: DefaultSource[] = [];
-  
+
   // Scenario
   let scenario = 'Standard';
   let scenarioSource = 'Default';
@@ -117,7 +115,7 @@ export function getEstimateDefaults(
     scenario = 'A';
     scenarioSource = `Preset: ${preset.name}`;
   }
-  
+
   // Complexity - sticky first, then preset, then default
   let complexity = 'Medium';
   let complexitySource = 'Default';
@@ -128,7 +126,7 @@ export function getEstimateDefaults(
     complexity = preset.complexity;
     complexitySource = `Preset: ${preset.name}`;
   }
-  
+
   // Environments - preset or default
   let environments = '2 env';
   let environmentsSource = 'Default';
@@ -136,7 +134,7 @@ export function getEstimateDefaults(
     environments = preset.environments;
     environmentsSource = `Preset: ${preset.name}`;
   }
-  
+
   // Reuse - inferred logic
   let reuse = 'Medium';
   let reuseSource = 'Default';
@@ -144,36 +142,36 @@ export function getEstimateDefaults(
     reuse = preset.reuse;
     reuseSource = `Preset: ${preset.name}`;
   }
-  
+
   // Stakeholders - inferred from labels
   const labels = requirement.labels ? requirement.labels.split(',').map(l => l.trim()) : [];
   const stakeholders = inferStakeholdersFromLabels(labels);
   const stakeholdersSource = labels.length > 0 ? 'Labels Analysis' : (preset ? `Preset: ${preset.name}` : 'Default');
-  
+
   // Activities - preset or sticky
   let includedActivities: string[] = [];
   let activitiesSource = 'Default';
-  if (sticky?.activities_csv) {
-    includedActivities = sticky.activities_csv.split(',');
+  if (sticky?.included_activities && sticky.included_activities.length > 0) {
+    includedActivities = sticky.included_activities;
     activitiesSource = 'Sticky/Estimator';
   } else if (preset) {
     includedActivities = preset.activities;
     activitiesSource = `Preset: ${preset.name}`;
   }
-  
+
   // Optional activities based on title patterns
   const includeOptional = shouldIncludeOptionalActivities(requirement.title);
   let optionalActivities: string[] = [];
   if (includeOptional) {
     optionalActivities = ['WF_HOOK']; // Workflow hook for state changes
   }
-  
+
   // Risks - inferred from title
   const inferredRisks = inferRisksFromTitle(requirement.title);
   let selectedRisks = preset ? preset.risks : [];
   selectedRisks = [...selectedRisks, ...inferredRisks];
   const risksSource = inferredRisks.length > 0 ? 'Title Analysis' : (preset ? `Preset: ${preset.name}` : 'Default');
-  
+
   // Build sources array
   sources.push(
     { field: 'complexity', value: complexity, source: complexitySource, is_overridden: false },
@@ -181,15 +179,15 @@ export function getEstimateDefaults(
     { field: 'reuse', value: reuse, source: reuseSource, is_overridden: false },
     { field: 'stakeholders', value: stakeholders, source: stakeholdersSource, is_overridden: false }
   );
-  
+
   if (includedActivities.length > 0) {
     sources.push({ field: 'activities', value: includedActivities.join(','), source: activitiesSource, is_overridden: false });
   }
-  
+
   if (selectedRisks.length > 0) {
     sources.push({ field: 'risks', value: selectedRisks.join(','), source: risksSource, is_overridden: false });
   }
-  
+
   const defaults: Partial<Estimate> = {
     scenario,
     complexity: complexity as Estimate['complexity'],
@@ -215,36 +213,36 @@ export function getEstimateDefaults(
     risks_is_overridden: false,
     default_json: JSON.stringify(sources)
   };
-  
+
   return { defaults, sources };
 }
 
 // Update sticky defaults when user makes choices
-export function updateStickyDefaults(
+export async function updateStickyDefaults(
   user: string,
   listId: string,
   estimate: Partial<Estimate>
-): void {
+): Promise<void> {
   const sticky: StickyDefaults = {
-    user,
+    user_id: user,
     list_id: listId,
     complexity: estimate.complexity,
     environments: estimate.environments,
     reuse: estimate.reuse,
     stakeholders: estimate.stakeholders,
-    activities_csv: estimate.included_activities?.join(','),
-    last_updated: new Date().toISOString()
+    included_activities: estimate.included_activities || [],
+    updated_on: new Date().toISOString()
   };
-  
-  saveStickyDefaults(sticky);
+
+  await saveStickyDefaults(sticky);
 }
 
 // Reset defaults
-export function resetToDefaults(
+export async function resetToDefaults(
   requirement: Requirement,
   list: List,
   currentUser: string
-): { defaults: Partial<Estimate>; sources: DefaultSource[] } {
+): Promise<{ defaults: Partial<Estimate>; sources: DefaultSource[] }> {
   // Clear sticky defaults for this context and recalculate
-  return getEstimateDefaults(requirement, list, currentUser);
+  return await getEstimateDefaults(requirement, list, currentUser);
 }

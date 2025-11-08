@@ -7,6 +7,10 @@ export interface List {
   created_on: string;
   created_by: string;
   status: 'Active' | 'Archived';
+  // Additional business fields
+  owner?: string;
+  period?: string;
+  notes?: string;
 }
 
 export interface Requirement {
@@ -20,6 +24,15 @@ export interface Requirement {
   labels?: string;
   created_on: string;
   last_estimated_on?: string;
+  // Additional business fields
+  estimator?: string;
+  // Default tracking fields
+  priority_default_source?: string;
+  priority_is_overridden?: boolean;
+  labels_default_source?: string;
+  labels_is_overridden?: boolean;
+  description_default_source?: string;
+  description_is_overridden?: boolean;
 }
 
 export interface Estimate {
@@ -45,7 +58,7 @@ export interface Estimate {
   drivers_version: string;
   riskmap_version: string;
   created_on: string;
-  
+
   // Default tracking fields
   complexity_default_source?: string;
   complexity_is_overridden: boolean;
@@ -96,7 +109,9 @@ export interface ContingencyBand {
 // UI types
 export interface DefaultSource {
   field: string;
+  value?: string;
   source: string;
+  is_overridden?: boolean;
 }
 
 export interface EstimateDefaults {
@@ -119,4 +134,22 @@ export interface StickyDefaults {
   stakeholders?: string;
   included_activities?: string[];
   updated_on: string;
+}
+
+export interface ExportRow {
+  list_name: string;
+  req_id: string;
+  title: string;
+  priority: string;
+  scenario: string;
+  complexity: string;
+  environments: string;
+  reuse: string;
+  stakeholders: string;
+  subtotal_days: number;
+  contingency_pct: number;
+  total_days: number;
+  estimator: string;
+  last_estimated_on: string;
+  state: string;
 }

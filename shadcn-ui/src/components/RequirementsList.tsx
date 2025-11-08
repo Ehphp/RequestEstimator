@@ -8,8 +8,11 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useToast } from '@/hooks/use-toast';
 import { List, Requirement } from '../types';
 import { saveRequirement, generateId } from '../lib/storage';
+import { getPriorityColor, getStateColor } from '@/lib/utils';
+import { logger } from '@/lib/logger';
 
 interface RequirementsListProps {
   list: List;
@@ -19,15 +22,25 @@ interface RequirementsListProps {
   onRequirementsChange: () => void;
 }
 
-export function RequirementsList({ 
-  list, 
-  requirements, 
-  onBack, 
-  onSelectRequirement, 
-  onRequirementsChange 
+type RequirementFormState = {
+  title: string;
+  description: string;
+  business_owner: string;
+  priority: Requirement['priority'];
+  state: Requirement['state'];
+  labels: string;
+};
+
+export function RequirementsList({
+  list,
+  requirements,
+  onBack,
+  onSelectRequirement,
+  onRequirementsChange
 }: RequirementsListProps) {
+  const { toast } = useToast();
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
-  const [newRequirement, setNewRequirement] = useState({
+  const [newRequirement, setNewRequirement] = useState<RequirementFormState>({
     title: '',
     description: '',
     business_owner: '',
@@ -52,7 +65,7 @@ export function RequirementsList({
       };
 
       await saveRequirement(requirement);
-      
+
       // Reset form
       setNewRequirement({
         title: '',
@@ -62,31 +75,21 @@ export function RequirementsList({
         state: 'Proposed',
         labels: ''
       });
-      
+
       setIsAddDialogOpen(false);
       onRequirementsChange();
+
+      toast({
+        title: 'Requisito salvato',
+        description: 'Il requisito è stato aggiunto con successo',
+      });
     } catch (error) {
-      console.error('Error adding requirement:', error);
-      alert('Errore nel salvataggio del requisito');
-    }
-  };
-
-  const getPriorityColor = (priority: string) => {
-    switch (priority) {
-      case 'High': return 'bg-red-100 text-red-800';
-      case 'Med': return 'bg-yellow-100 text-yellow-800';
-      case 'Low': return 'bg-green-100 text-green-800';
-      default: return 'bg-gray-100 text-gray-800';
-    }
-  };
-
-  const getStateColor = (state: string) => {
-    switch (state) {
-      case 'Proposed': return 'bg-blue-100 text-blue-800';
-      case 'Selected': return 'bg-purple-100 text-purple-800';
-      case 'Scheduled': return 'bg-orange-100 text-orange-800';
-      case 'Done': return 'bg-green-100 text-green-800';
-      default: return 'bg-gray-100 text-gray-800';
+      logger.error('Error adding requirement:', error);
+      toast({
+        variant: 'destructive',
+        title: 'Errore',
+        description: 'Impossibile salvare il requisito. Riprova.',
+      });
     }
   };
 
@@ -122,7 +125,7 @@ export function RequirementsList({
                   placeholder="Titolo del requisito"
                 />
               </div>
-              
+
               <div>
                 <Label htmlFor="description">Descrizione</Label>
                 <Textarea
@@ -133,7 +136,7 @@ export function RequirementsList({
                   rows={3}
                 />
               </div>
-              
+
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label htmlFor="business_owner">Business Owner</Label>
@@ -144,7 +147,7 @@ export function RequirementsList({
                     placeholder="email@company.com"
                   />
                 </div>
-                
+
                 <div>
                   <Label htmlFor="labels">Etichette</Label>
                   <Input
@@ -155,11 +158,16 @@ export function RequirementsList({
                   />
                 </div>
               </div>
-              
+
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label htmlFor="priority">Priorità</Label>
-                  <Select value={newRequirement.priority} onValueChange={(value: any) => setNewRequirement({ ...newRequirement, priority: value })}>
+                  <Select
+                    value={newRequirement.priority}
+                    onValueChange={(value: Requirement['priority']) =>
+                      setNewRequirement({ ...newRequirement, priority: value })
+                    }
+                  >
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
@@ -170,10 +178,15 @@ export function RequirementsList({
                     </SelectContent>
                   </Select>
                 </div>
-                
+
                 <div>
                   <Label htmlFor="state">Stato</Label>
-                  <Select value={newRequirement.state} onValueChange={(value: any) => setNewRequirement({ ...newRequirement, state: value })}>
+                  <Select
+                    value={newRequirement.state}
+                    onValueChange={(value: Requirement['state']) =>
+                      setNewRequirement({ ...newRequirement, state: value })
+                    }
+                  >
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
@@ -186,7 +199,7 @@ export function RequirementsList({
                   </Select>
                 </div>
               </div>
-              
+
               <div className="flex justify-end gap-2">
                 <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>
                   Annulla
@@ -217,7 +230,7 @@ export function RequirementsList({
       ) : (
         <div className="grid gap-4">
           {requirements.map((requirement) => (
-            <Card 
+            <Card
               key={requirement.req_id}
               className="cursor-pointer hover:shadow-md transition-shadow"
               onClick={() => onSelectRequirement(requirement)}
@@ -240,7 +253,7 @@ export function RequirementsList({
                   </div>
                 </div>
               </CardHeader>
-              
+
               <CardContent className="pt-0">
                 <div className="flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
                   <div className="flex items-center gap-1">
