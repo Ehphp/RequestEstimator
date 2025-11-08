@@ -6,7 +6,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Card, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Requirement } from '../types';
-import { getRequirementsByListId, getLists, generateExportData, exportToCSV, downloadCSV } from '../lib/storage';
+import { getRequirementsByListId, getListById, generateExportData, exportToCSV, downloadCSV } from '../lib/storage';
 import { getPriorityColor, getStateColor } from '@/lib/utils';
 
 interface ExportDialogProps {
@@ -22,8 +22,7 @@ export function ExportDialog({ listId, onClose }: ExportDialogProps) {
 
   useEffect(() => {
     const loadData = async () => {
-      const lists = await getLists();
-      const list = lists.find(l => l.list_id === listId);
+      const list = await getListById(listId);
       setListName(list?.name || 'Lista');
 
       const reqs = await getRequirementsByListId(listId);

@@ -1,6 +1,7 @@
 import { List, Requirement, Estimate, Activity, Driver, Risk, ContingencyBand, ExportRow, StickyDefaults } from '../types';
-import { supabase, TABLES, isNotFoundError, safeDbRead } from './supabase';
+import { supabase, TABLES, safeDbRead } from './supabase';
 import { logger, logCrud } from './logger';
+import { throwDbError, isNotFoundError } from './dbErrors';
 
 // Utility functions
 export function generateId(prefix: string): string {
@@ -25,14 +26,36 @@ export async function getLists(): Promise<List[]> {
   }, 'getLists', []);
 }
 
+export async function getListById(listId: string): Promise<List | null> {
+  if (!listId) {
+    return null;
+  }
+
+  return safeDbRead(async () => {
+    const { data, error } = await supabase
+      .from(TABLES.LISTS)
+      .select('*')
+      .eq('list_id', listId)
+      .single();
+
+    if (error) {
+      if (isNotFoundError(error)) {
+        return null;
+      }
+      throw error;
+    }
+
+    return data ?? null;
+  }, 'getListById', null);
+}
+
 export async function saveList(list: List): Promise<void> {
   const { error } = await supabase
     .from(TABLES.LISTS)
     .upsert(list, { onConflict: 'list_id' });
 
   if (error) {
-    logger.error('Error saving list:', error);
-    throw new Error(`Impossibile salvare la lista: ${error.message}`);
+    throwDbError(error, 'Impossibile salvare la lista');
   }
 
   logCrud.create('List', list.list_id);
@@ -44,9 +67,13 @@ export async function deleteList(listId: string): Promise<void> {
     throw new Error('ID lista non valido');
   }
 
-  // Supabase non supporta transazioni multi-tabella direttamente,
-  // ma possiamo usare cascading delete configurato a livello DB
-  // oppure implementare una pseudo-transazione con rollback manuale
+  // ⚠️ IMPORTANTE: Questa funzione usa logica manuale di cascade delete
+  // DOPO l'applicazione delle Foreign Keys con ON DELETE CASCADE (migration 001),
+  // questa logica può essere rimossa e si può usare solo la delete della lista
+  // (le FK si occupano di eliminare automaticamente requirements ed estimates)
+
+  // TODO: Rimuovere Steps 2-4 quando FK CASCADE sono attive in produzione
+  // TODO: Tenere solo Step 1 (verifica esistenza) e Step 5 (delete lista)
 
   // Step 1: Verifica che la lista esista
   const { error: checkError } = await supabase
@@ -59,8 +86,7 @@ export async function deleteList(listId: string): Promise<void> {
     if (isNotFoundError(checkError)) {
       throw new Error('Lista non trovata');
     }
-    logger.error('Error checking list existence:', checkError);
-    throw new Error(`Errore verifica lista: ${checkError.message}`);
+    throwDbError(checkError, 'Errore verifica lista');
   }
 
   // Step 2: Recupera IDs requisiti per eliminazione stime
@@ -70,8 +96,7 @@ export async function deleteList(listId: string): Promise<void> {
     .eq('list_id', listId);
 
   if (reqFetchError) {
-    logger.error('Error fetching requirements for deletion:', reqFetchError);
-    throw new Error(`Impossibile recuperare i requisiti: ${reqFetchError.message}`);
+    throwDbError(reqFetchError, 'Impossibile recuperare i requisiti');
   }
 
   const requirementIds = (requirements || []).map(req => req.req_id);
@@ -85,8 +110,7 @@ export async function deleteList(listId: string): Promise<void> {
       .in('req_id', requirementIds);
 
     if (estimatesError) {
-      logger.error('Error deleting estimates:', estimatesError);
-      throw new Error(`Impossibile eliminare le stime: ${estimatesError.message}`);
+      throwDbError(estimatesError, 'Impossibile eliminare le stime');
     }
     logger.info(`Deleted estimates for ${requirementIds.length} requirements`);
   }
@@ -99,8 +123,7 @@ export async function deleteList(listId: string): Promise<void> {
       .eq('list_id', listId);
 
     if (requirementsError) {
-      logger.error('Error deleting requirements:', requirementsError);
-      throw new Error(`Impossibile eliminare i requisiti: ${requirementsError.message}`);
+      throwDbError(requirementsError, 'Impossibile eliminare i requisiti');
     }
     logger.info(`Deleted ${requirementIds.length} requirements`);
   }
@@ -112,8 +135,7 @@ export async function deleteList(listId: string): Promise<void> {
     .eq('list_id', listId);
 
   if (deleteError) {
-    logger.error('Error deleting list:', deleteError);
-    throw new Error(`Impossibile eliminare la lista: ${deleteError.message}`);
+    throwDbError(deleteError, 'Impossibile eliminare la lista');
   }
 
   logCrud.delete('List', listId);
@@ -138,18 +160,12 @@ export async function getRequirementsByListId(listId: string): Promise<Requireme
 }
 
 export async function saveRequirement(requirement: Requirement): Promise<void> {
-  try {
-    const { error } = await supabase
-      .from(TABLES.REQUIREMENTS)
-      .upsert(requirement, { onConflict: 'req_id' });
+  const { error } = await supabase
+    .from(TABLES.REQUIREMENTS)
+    .upsert(requirement, { onConflict: 'req_id' });
 
-    if (error) {
-      logger.error('Error saving requirement:', error);
-      throw error;
-    }
-  } catch (error) {
-    logger.error('Error in saveRequirement:', error);
-    throw error;
+  if (error) {
+    throwDbError(error, 'Impossibile salvare il requisito');
   }
 }
 
@@ -158,6 +174,14 @@ export async function deleteRequirement(reqId: string): Promise<void> {
   if (!reqId || typeof reqId !== 'string') {
     throw new Error('ID requisito non valido');
   }
+
+  // ⚠️ IMPORTANTE: Questa funzione usa logica manuale di cascade delete
+  // DOPO l'applicazione delle Foreign Keys con ON DELETE CASCADE (migration 001),
+  // questa logica può essere rimossa e si può usare solo la delete del requisito
+  // (le FK si occupano di eliminare automaticamente estimates)
+
+  // TODO: Rimuovere Step 2 quando FK CASCADE sono attive in produzione
+  // TODO: Tenere solo Step 1 (verifica esistenza) e Step 3 (delete requisito)
 
   // Step 1: Verifica che il requisito esista
   const { error: checkError } = await supabase
@@ -170,8 +194,7 @@ export async function deleteRequirement(reqId: string): Promise<void> {
     if (isNotFoundError(checkError)) {
       throw new Error('Requisito non trovato');
     }
-    logger.error('Error checking requirement existence:', checkError);
-    throw new Error(`Errore verifica requisito: ${checkError.message}`);
+    throwDbError(checkError, 'Errore verifica requisito');
   }
 
   // Step 2: Elimina stime associate
@@ -181,8 +204,7 @@ export async function deleteRequirement(reqId: string): Promise<void> {
     .eq('req_id', reqId);
 
   if (estimatesError) {
-    logger.error('Error deleting estimates:', estimatesError);
-    throw new Error(`Impossibile eliminare le stime: ${estimatesError.message}`);
+    throwDbError(estimatesError, 'Impossibile eliminare le stime');
   }
 
   // Step 3: Elimina requisito
@@ -192,8 +214,7 @@ export async function deleteRequirement(reqId: string): Promise<void> {
     .eq('req_id', reqId);
 
   if (deleteError) {
-    logger.error('Error deleting requirement:', deleteError);
-    throw new Error(`Impossibile eliminare il requisito: ${deleteError.message}`);
+    throwDbError(deleteError, 'Impossibile eliminare il requisito');
   }
 
   logCrud.delete('Requirement', reqId);
@@ -218,8 +239,56 @@ export async function getEstimatesByReqId(reqId: string): Promise<Estimate[]> {
 }
 
 export async function getLatestEstimate(reqId: string): Promise<Estimate | undefined> {
-  const estimates = await getEstimatesByReqId(reqId);
-  return estimates.length > 0 ? estimates[0] : undefined;
+  if (!reqId) {
+    return undefined;
+  }
+
+  return safeDbRead<Estimate | undefined>(async () => {
+    const { data, error } = await supabase
+      .from(TABLES.ESTIMATES)
+      .select('*')
+      .eq('req_id', reqId)
+      .order('created_on', { ascending: false })
+      .limit(1);
+
+    if (error) {
+      throw error;
+    }
+
+    return data && data.length > 0 ? data[0] : undefined;
+  }, 'getLatestEstimate', undefined);
+}
+
+export async function getLatestEstimates(reqIds: string[]): Promise<Record<string, Estimate | undefined>> {
+  const uniqueReqIds = Array.from(new Set(reqIds)).filter(Boolean) as string[];
+
+  if (uniqueReqIds.length === 0) {
+    return {};
+  }
+
+  type EstimateMap = Record<string, Estimate | undefined>;
+
+  return safeDbRead<EstimateMap>(async () => {
+    const { data, error } = await supabase
+      .from(TABLES.ESTIMATES)
+      .select('*')
+      .in('req_id', uniqueReqIds)
+      .order('req_id', { ascending: true })
+      .order('created_on', { ascending: false });
+
+    if (error) {
+      throw error;
+    }
+
+    const latestMap: EstimateMap = {};
+    (data || []).forEach((estimate) => {
+      if (!latestMap[estimate.req_id]) {
+        latestMap[estimate.req_id] = estimate;
+      }
+    });
+
+    return latestMap;
+  }, 'getLatestEstimates', {} as EstimateMap);
 }
 
 /**
@@ -236,24 +305,29 @@ export async function saveEstimate(estimate: Estimate): Promise<{ success: true;
     .upsert(estimate, { onConflict: 'estimate_id' });
 
   if (estimateError) {
-    logger.error('Error saving estimate:', estimateError);
-    throw new Error(`Impossibile salvare la stima: ${estimateError.message}`);
+    throwDbError(estimateError, 'Impossibile salvare la stima');
   }
 
   logCrud.create('Estimate', estimate.estimate_id);
 
-  // Step 2: Aggiorna timestamp requirement (non critico)
+  // Step 2: Aggiorna timestamp e estimator del requirement (non critico)
+  // ⚠️ NOTE: Con trigger database (migration 003), questo aggiornamento potrebbe
+  // essere gestito automaticamente dal trigger trg_update_requirement_timestamp
+  // Se trigger attivo, questo codice diventa ridondante ma non dannoso
   const { error: updateError } = await supabase
     .from(TABLES.REQUIREMENTS)
-    .update({ last_estimated_on: new Date().toISOString() })
+    .update({
+      last_estimated_on: new Date().toISOString(),
+      estimator: estimate.created_on.split('T')[0] // Use estimate creator as estimator
+    })
     .eq('req_id', estimate.req_id);
 
   if (updateError) {
     // L'estimate è salvata, ma timestamp non aggiornato
-    logger.error('Warning: Could not update last_estimated_on (estimate was saved):', updateError);
+    logger.error('Warning: Could not update requirement metadata (estimate was saved):', updateError);
     return {
       success: true,
-      warning: 'Stima salvata ma timestamp requisito non aggiornato'
+      warning: 'Stima salvata ma metadati requisito non aggiornati'
     };
   }
 
@@ -332,8 +406,7 @@ export async function getStickyDefaults(userId: string, listId: string): Promise
     if (isNotFoundError(error)) {
       return null;
     }
-    logger.error('Error getting sticky defaults:', error);
-    throw new Error(`Impossibile recuperare i defaults: ${error.message}`);
+    throwDbError(error, 'Impossibile recuperare i defaults');
   }
 
   return data;
@@ -348,8 +421,7 @@ export async function saveStickyDefaults(defaults: StickyDefaults): Promise<void
     });
 
   if (error) {
-    logger.error('Error saving sticky defaults:', error);
-    throw new Error(`Impossibile salvare i defaults: ${error.message}`);
+    throwDbError(error, 'Impossibile salvare i defaults');
   }
 }
 
@@ -366,8 +438,7 @@ export async function generateExportData(listId: string, selectedReqIds?: string
     throw new Error('Lista requisiti non valida');
   }
 
-  const lists = await getLists();
-  const list = lists.find(l => l.list_id === listId);
+  const list = await getListById(listId);
 
   if (!list) {
     logger.error('List not found for export:', listId);
@@ -403,8 +474,7 @@ export async function generateExportData(listId: string, selectedReqIds?: string
     .order('created_on', { ascending: false });
 
   if (estimatesError) {
-    logger.error('Error fetching estimates for export:', estimatesError);
-    throw new Error(`Impossibile recuperare le stime: ${estimatesError.message}`);
+    throwDbError(estimatesError, 'Impossibile recuperare le stime');
   }
 
   // Crea mappa req_id -> latest estimate

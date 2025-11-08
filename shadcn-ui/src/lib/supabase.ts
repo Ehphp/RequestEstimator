@@ -32,6 +32,7 @@ export const TABLES = {
  * @param error - Errore da Supabase
  * @param operation - Operazione che ha generato l'errore
  * @param throwError - Se true, rilancia l'errore dopo il log
+ * @deprecated Use throwDbError from dbErrors.ts instead
  */
 export function handleSupabaseError(
   error: unknown,
@@ -43,20 +44,6 @@ export function handleSupabaseError(
   if (throwError) {
     throw new Error(`Errore database durante ${operation}: ${error instanceof Error ? error.message : 'Errore sconosciuto'}`);
   }
-}
-
-/**
- * Verifica se un errore Supabase indica "nessun record trovato"
- * @param error - Errore da verificare
- * @returns true se è un errore "not found"
- */
-export function isNotFoundError(error: unknown): boolean {
-  return (
-    error !== null &&
-    typeof error === 'object' &&
-    'code' in error &&
-    error.code === 'PGRST116'
-  );
 }
 
 /**

@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { logger } from '@/lib/logger';
 
 interface AuthContextType {
@@ -29,7 +29,7 @@ interface AuthProviderProps {
 export function AuthProvider({ children }: AuthProviderProps) {
     // Default user - in produzione recuperare da Supabase Auth
     const [currentUser, setCurrentUserState] = useState<string>('current.user@example.com');
-    const [isAuthenticated, setIsAuthenticated] = useState<boolean>(true);
+    const [isAuthenticated] = useState<boolean>(true);
 
     useEffect(() => {
         // Check localStorage per user salvato

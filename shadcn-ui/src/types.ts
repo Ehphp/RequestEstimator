@@ -153,3 +153,86 @@ export interface ExportRow {
   last_estimated_on: string;
   state: string;
 }
+
+// Dashboard types
+export interface RequirementWithEstimate {
+  requirement: Requirement;
+  estimate: Estimate | null;
+  estimationDays: number; // total_days from estimate or 0
+  difficulty: 1 | 2 | 3 | 4 | 5; // mapped from complexity
+  tags: string[]; // parsed from labels
+}
+
+export interface DashboardFilters {
+  priorities: ('High' | 'Med' | 'Low')[];
+  tags: string[];
+  startDate: string;
+  nDevelopers: number;
+  excludeWeekends: boolean;
+  holidays: string[];
+  colorBy: 'priority' | 'tag';
+}
+
+export interface DashboardKPI {
+  totalDays: number;
+  avgDays: number;
+  medianDays: number;
+  p80Days: number;
+  // Mix difficoltà
+  difficultyMix: {
+    low: number;    // count with difficulty 1-2
+    medium: number; // count with difficulty 3
+    high: number;   // count with difficulty 4-5
+  };
+  // Mix priorità
+  priorityMix: {
+    High: number;   // count
+    Med: number;
+    Low: number;
+  };
+  priorityMixPct: {
+    High: number;   // percentage
+    Med: number;
+    Low: number;
+  };
+  // Effort per priorità
+  effortByPriority: {
+    High: number;   // total days
+    Med: number;
+    Low: number;
+  };
+  effortByPriorityPct: {
+    High: number;   // percentage
+    Med: number;
+    Low: number;
+  };
+  // Top tag per effort
+  topTagByEffort: {
+    tag: string;
+    effort: number;
+  } | null;
+}
+
+export interface ScenarioConfig {
+  startDate: string;
+  nDevelopers: number;
+  excludeWeekends: boolean;
+  holidays: string[];
+  mode: 'Splittable' | 'Indivisible';
+  priorityPolicy: 'Neutral' | 'PriorityFirst' | 'CapacitySplit';
+  capacityShare?: {
+    High: number;
+    Med: number;
+    Low: number;
+  };
+}
+
+export interface ProjectionResult {
+  finishDate: string;
+  totalWorkdays: number;
+  milestones?: {
+    finishHigh?: string;
+    finishMed?: string;
+    finishLow?: string;
+  };
+}

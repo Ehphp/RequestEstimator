@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Plus, FileText, Calendar, User, Tag, AlertCircle, Loader2, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -14,6 +14,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { ThemeToggle } from '@/components/ThemeToggle';
 import { List, Requirement } from '../types';
 import {
   getLists,
@@ -22,7 +23,6 @@ import {
   saveList,
   deleteList,
 } from '../lib/storage';
-import { getPriorityColor, getStateColor } from '@/lib/utils';
 import { logger } from '@/lib/logger';
 import { RequirementsList } from '../components/RequirementsList';
 import { EstimateEditor } from '../components/EstimateEditor';
@@ -90,7 +90,7 @@ export default function Index() {
         list_id: generateId('LIST'),
         name: 'Nuova Lista',
         description: 'Descrizione della nuova lista',
-        preset_key: null,
+        preset_key: undefined,
         created_on: new Date().toISOString(),
         created_by: 'current.user@example.com',
         status: 'Active'
@@ -176,10 +176,10 @@ export default function Index() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-gray-50 to-blue-50">
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 via-gray-100 to-gray-200 dark:from-black dark:via-gray-900 dark:to-gray-950 flex items-center justify-center">
         <div className="flex items-center gap-3">
-          <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
-          <p className="text-lg text-gray-600">Caricamento dati da Supabase...</p>
+          <Loader2 className="h-8 w-8 animate-spin text-gray-600 dark:text-gray-400" />
+          <p className="text-lg text-gray-600 dark:text-gray-400">Caricamento dati da Supabase...</p>
         </div>
       </div>
     );
@@ -187,7 +187,7 @@ export default function Index() {
 
   if (selectedRequirement && selectedList) {
     return (
-      <div className="min-h-screen bg-gray-50 p-6">
+      <div className="min-h-screen bg-gray-50 dark:bg-black p-6">
         <EstimateEditor
           requirement={selectedRequirement}
           list={selectedList}
@@ -199,7 +199,7 @@ export default function Index() {
 
   if (selectedList) {
     return (
-      <div className="min-h-screen bg-gray-50 p-6">
+      <div className="min-h-screen bg-gray-50 dark:bg-black p-6">
         <RequirementsList
           list={selectedList}
           requirements={requirements}
@@ -212,21 +212,24 @@ export default function Index() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50 p-6">
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-gray-100 to-gray-200 dark:from-black dark:via-gray-900 dark:to-gray-950 p-6">
       <div className="max-w-7xl mx-auto">
         <div className="flex items-center justify-between mb-8">
           <div>
-            <h1 className="text-4xl font-bold text-gray-900">Sistema di Stima Requisiti</h1>
-            <p className="text-gray-600 mt-2">Gestisci le tue liste di requisiti e crea stime accurate</p>
-            <Badge variant="outline" className="mt-2 bg-green-50 text-green-700 border-green-200">
+            <h1 className="text-4xl font-bold text-gray-900 dark:text-gray-50">Sistema di Stima Requisiti</h1>
+            <p className="text-gray-600 dark:text-gray-400 mt-2">Gestisci le tue liste di requisiti e crea stime accurate</p>
+            <Badge variant="outline" className="mt-2 bg-green-50 dark:bg-green-950/30 text-green-700 dark:text-green-400 border-green-200 dark:border-green-800">
               <span className="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
               Connesso a Supabase
             </Badge>
           </div>
-          <Button onClick={handleCreateNewList} size="lg">
-            <Plus className="h-5 w-5 mr-2" />
-            Nuova Lista
-          </Button>
+          <div className="flex items-center gap-2">
+            <ThemeToggle />
+            <Button onClick={handleCreateNewList} size="lg">
+              <Plus className="h-5 w-5 mr-2" />
+              Nuova Lista
+            </Button>
+          </div>
         </div>
 
         {error && (
@@ -237,11 +240,11 @@ export default function Index() {
         )}
 
         {lists.length === 0 ? (
-          <Card className="text-center py-12">
+          <Card className="text-center py-12 dark:bg-gray-900/50 dark:border-gray-800">
             <CardContent>
-              <FileText className="h-16 w-16 mx-auto text-gray-400 mb-4" />
-              <h3 className="text-xl font-semibold text-gray-900 mb-2">Nessuna lista trovata</h3>
-              <p className="text-gray-600 mb-6">
+              <FileText className="h-16 w-16 mx-auto text-gray-400 dark:text-gray-600 mb-4" />
+              <h3 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-2">Nessuna lista trovata</h3>
+              <p className="text-gray-600 dark:text-gray-400 mb-6">
                 Crea la tua prima lista di requisiti per iniziare a gestire le stime
               </p>
               <Button onClick={handleCreateNewList}>
@@ -255,7 +258,7 @@ export default function Index() {
             {lists.map((list) => (
               <Card
                 key={list.list_id}
-                className="cursor-pointer hover:shadow-lg transition-shadow"
+                className="cursor-pointer hover:shadow-lg dark:hover:shadow-gray-900/50 transition-shadow dark:bg-gray-900/50 dark:border-gray-800"
                 onClick={() => handleSelectList(list)}
               >
                 <CardHeader>
@@ -273,16 +276,16 @@ export default function Index() {
                       }}
                       aria-label={`Elimina ${list.name}`}
                     >
-                      <Trash2 className="h-4 w-4 text-red-500" />
+                      <Trash2 className="h-4 w-4 text-red-500 dark:text-red-400" />
                     </Button>
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <p className="text-gray-600 text-sm mb-4 line-clamp-2">
+                  <p className="text-gray-600 dark:text-gray-400 text-sm mb-4 line-clamp-2">
                     {list.description}
                   </p>
 
-                  <div className="flex flex-wrap gap-2 text-xs text-gray-500">
+                  <div className="flex flex-wrap gap-2 text-xs text-gray-500 dark:text-gray-500">
                     <div className="flex items-center gap-1">
                       <Calendar className="h-3 w-3" />
                       {new Date(list.created_on).toLocaleDateString('it-IT')}

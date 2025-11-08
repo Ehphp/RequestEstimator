@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, Plus, Calculator, Edit, Trash2, Sparkles } from 'lucide-react';
+import { ArrowLeft, Plus, Calculator, Edit, Trash2, Sparkles, BarChart3, List as ListIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -8,12 +8,14 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { List, Requirement, DefaultSource } from '../types';
-import { getLists, getRequirementsByListId, saveRequirement, deleteRequirement, getLatestEstimate } from '../lib/storage';
+import { getListById, getRequirementsByListId, saveRequirement, deleteRequirement, getLatestEstimates } from '../lib/storage';
 import { getRequirementDefaults } from '../lib/defaults';
 import { getPriorityColor, getStateColor } from '@/lib/utils';
 import { DefaultPill } from './DefaultPill';
 import { EstimateEditor } from './EstimateEditor';
+import { DashboardView } from './DashboardView';
 
 interface RequirementsViewProps {
   listId: string;
@@ -26,6 +28,7 @@ export function RequirementsView({ listId, onBack }: RequirementsViewProps) {
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [editingRequirement, setEditingRequirement] = useState<Requirement | null>(null);
   const [estimatingRequirement, setEstimatingRequirement] = useState<Requirement | null>(null);
+  const [estimatesMap, setEstimatesMap] = useState<Map<string, any>>(new Map());
   const [formData, setFormData] = useState({
     title: '',
     description: '',
@@ -45,11 +48,21 @@ export function RequirementsView({ listId, onBack }: RequirementsViewProps) {
   }, [listId]);
 
   const loadData = async () => {
-    const lists = await getLists();
-    const currentList = lists.find(l => l.list_id === listId);
+    const currentList = await getListById(listId);
     setList(currentList || null);
     const reqs = await getRequirementsByListId(listId);
     setRequirements(reqs);
+
+    // Carica le stime per tutti i requisiti
+    const latestEstimates = await getLatestEstimates(reqs.map(req => req.req_id));
+    const estimates = new Map();
+    reqs.forEach(req => {
+      const estimate = latestEstimates[req.req_id];
+      if (estimate) {
+        estimates.set(req.req_id, estimate);
+      }
+    });
+    setEstimatesMap(estimates);
   };
 
   const handleTitleChange = (title: string) => {
@@ -379,128 +392,157 @@ export function RequirementsView({ listId, onBack }: RequirementsViewProps) {
         </Dialog>
       </div>
 
-      <div className="grid gap-4">
-        {requirements.map((requirement) => {
-          const latestEstimate = getLatestEstimate(requirement.req_id);
-          return (
-            <Card key={requirement.req_id} className="hover:shadow-md transition-shadow">
-              <CardHeader className="pb-3">
-                <div className="flex justify-between items-start">
-                  <div className="flex-1">
-                    <CardTitle className="text-lg">{requirement.title}</CardTitle>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      {requirement.req_id} • Owner: {requirement.business_owner}
-                    </p>
-                    {/* Show default sources for key fields */}
-                    <div className="flex flex-wrap gap-1 mt-2">
-                      {requirement.priority_default_source && !requirement.priority_is_overridden && (
-                        <Badge variant="secondary" className="text-xs">
-                          Priority: {requirement.priority_default_source}
-                        </Badge>
+      {/* DEBUG: Tabs per visualizzazione Lista/Dashboard */}
+      <div className="w-full mt-6 p-4 border-4 border-red-500 bg-yellow-100">
+        <p className="text-red-600 font-bold mb-4">DEBUG: QUESTO DOVREBBE ESSERE VISIBILE</p>
+        <Tabs defaultValue="list" className="w-full">
+          <TabsList className="grid w-full grid-cols-2 max-w-md mb-6 bg-blue-500 p-2 rounded-lg">
+            <TabsTrigger value="list" className="flex items-center gap-2 font-medium text-white">
+              <ListIcon className="h-4 w-4" />
+              Lista Requisiti
+            </TabsTrigger>
+            <TabsTrigger value="dashboard" className="flex items-center gap-2 font-medium text-white">
+              <BarChart3 className="h-4 w-4" />
+              Dashboard Stima
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="list" className="space-y-4">
+            <div className="grid gap-4">
+              {requirements.map((requirement) => {
+                const latestEstimate = estimatesMap.get(requirement.req_id);
+                return (
+                  <Card key={requirement.req_id} className="hover:shadow-md transition-shadow">
+                    <CardHeader className="pb-3">
+                      <div className="flex justify-between items-start">
+                        <div className="flex-1">
+                          <CardTitle className="text-lg">{requirement.title}</CardTitle>
+                          <p className="text-sm text-muted-foreground mt-1">
+                            {requirement.req_id} • Owner: {requirement.business_owner}
+                          </p>
+                          {/* Show default sources for key fields */}
+                          <div className="flex flex-wrap gap-1 mt-2">
+                            {requirement.priority_default_source && !requirement.priority_is_overridden && (
+                              <Badge variant="secondary" className="text-xs">
+                                Priority: {requirement.priority_default_source}
+                              </Badge>
+                            )}
+                            {requirement.labels_default_source && !requirement.labels_is_overridden && (
+                              <Badge variant="secondary" className="text-xs">
+                                Labels: {requirement.labels_default_source}
+                              </Badge>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex gap-2">
+                          <Badge className={getPriorityColor(requirement.priority)}>
+                            {requirement.priority}
+                          </Badge>
+                          <Badge className={getStateColor(requirement.state)}>
+                            {requirement.state}
+                          </Badge>
+                        </div>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <p className="text-sm line-clamp-2">{requirement.description}</p>
+
+                      {latestEstimate && (
+                        <div className="bg-muted p-3 rounded-lg">
+                          <div className="grid grid-cols-3 gap-4 text-sm">
+                            <div>
+                              <p className="text-muted-foreground">Scenario</p>
+                              <p className="font-medium">{latestEstimate.scenario}</p>
+                            </div>
+                            <div>
+                              <p className="text-muted-foreground">Subtotal</p>
+                              <p className="font-medium">{latestEstimate.subtotal_days} giorni</p>
+                            </div>
+                            <div>
+                              <p className="text-muted-foreground">Totale</p>
+                              <p className="font-semibold text-primary">{latestEstimate.total_days} giorni</p>
+                            </div>
+                          </div>
+                          {/* Show default tracking for estimates */}
+                          {latestEstimate.default_json && (
+                            <div className="mt-2 pt-2 border-t">
+                              <p className="text-xs text-muted-foreground">
+                                <Sparkles className="h-3 w-3 inline mr-1" />
+                                Stima con default intelligenti applicati
+                              </p>
+                            </div>
+                          )}
+                        </div>
                       )}
-                      {requirement.labels_default_source && !requirement.labels_is_overridden && (
-                        <Badge variant="secondary" className="text-xs">
-                          Labels: {requirement.labels_default_source}
-                        </Badge>
+
+                      {requirement.labels && (
+                        <div className="flex flex-wrap gap-1">
+                          {requirement.labels.split(',').map((label, index) => (
+                            <Badge key={index} variant="outline" className="text-xs">
+                              {label.trim()}
+                            </Badge>
+                          ))}
+                        </div>
                       )}
-                    </div>
-                  </div>
-                  <div className="flex gap-2">
-                    <Badge className={getPriorityColor(requirement.priority)}>
-                      {requirement.priority}
+
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          onClick={() => setEstimatingRequirement(requirement)}
+                          className="flex-1"
+                        >
+                          <Calculator className="h-4 w-4 mr-1" />
+                          {latestEstimate ? 'Aggiorna Stima' : 'Crea Stima'}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleEdit(requirement)}
+                        >
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleDelete(requirement.req_id)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+
+            {requirements.length === 0 && (
+              <div className="text-center py-12">
+                <p className="text-muted-foreground mb-4">Nessun requisito creato ancora</p>
+                <Button onClick={handleCreateNew}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Crea il primo requisito
+                  {list?.preset_key && (
+                    <Badge variant="secondary" className="ml-2">
+                      <Sparkles className="h-3 w-3 mr-1" />
+                      Con default intelligenti
                     </Badge>
-                    <Badge className={getStateColor(requirement.state)}>
-                      {requirement.state}
-                    </Badge>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <p className="text-sm line-clamp-2">{requirement.description}</p>
-
-                {latestEstimate && (
-                  <div className="bg-muted p-3 rounded-lg">
-                    <div className="grid grid-cols-3 gap-4 text-sm">
-                      <div>
-                        <p className="text-muted-foreground">Scenario</p>
-                        <p className="font-medium">{latestEstimate.scenario}</p>
-                      </div>
-                      <div>
-                        <p className="text-muted-foreground">Subtotal</p>
-                        <p className="font-medium">{latestEstimate.subtotal_days} giorni</p>
-                      </div>
-                      <div>
-                        <p className="text-muted-foreground">Totale</p>
-                        <p className="font-semibold text-primary">{latestEstimate.total_days} giorni</p>
-                      </div>
-                    </div>
-                    {/* Show default tracking for estimates */}
-                    {latestEstimate.default_json && (
-                      <div className="mt-2 pt-2 border-t">
-                        <p className="text-xs text-muted-foreground">
-                          <Sparkles className="h-3 w-3 inline mr-1" />
-                          Stima con default intelligenti applicati
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {requirement.labels && (
-                  <div className="flex flex-wrap gap-1">
-                    {requirement.labels.split(',').map((label, index) => (
-                      <Badge key={index} variant="outline" className="text-xs">
-                        {label.trim()}
-                      </Badge>
-                    ))}
-                  </div>
-                )}
-
-                <div className="flex gap-2">
-                  <Button
-                    size="sm"
-                    onClick={() => setEstimatingRequirement(requirement)}
-                    className="flex-1"
-                  >
-                    <Calculator className="h-4 w-4 mr-1" />
-                    {latestEstimate ? 'Aggiorna Stima' : 'Crea Stima'}
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => handleEdit(requirement)}
-                  >
-                    <Edit className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => handleDelete(requirement.req_id)}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          );
-        })}
-      </div>
-
-      {requirements.length === 0 && (
-        <div className="text-center py-12">
-          <p className="text-muted-foreground mb-4">Nessun requisito creato ancora</p>
-          <Button onClick={handleCreateNew}>
-            <Plus className="h-4 w-4 mr-2" />
-            Crea il primo requisito
-            {list?.preset_key && (
-              <Badge variant="secondary" className="ml-2">
-                <Sparkles className="h-3 w-3 mr-1" />
-                Con default intelligenti
-              </Badge>
+                  )}
+                </Button>
+              </div>
             )}
-          </Button>
-        </div>
-      )}
+          </TabsContent>
+
+          <TabsContent value="dashboard" className="mt-6">
+            {list && (
+              <DashboardView
+                list={list}
+                requirements={requirements}
+                onBack={() => { }}
+              />
+            )}
+          </TabsContent>
+        </Tabs>
+      </div>
     </div>
   );
 }

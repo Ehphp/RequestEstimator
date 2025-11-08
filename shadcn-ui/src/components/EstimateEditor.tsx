@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { ArrowLeft, Save, Info, AlertCircle, Copy, Sparkles, RotateCcw, User, Calendar, Tag, TrendingUp } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -101,8 +101,7 @@ export function EstimateEditor({ requirement, list, onBack }: EstimateEditorProp
         environments,
         reuse,
         stakeholders,
-        selectedRisks,
-        includeOptional
+        selectedRisks
       );
       setCalculatedEstimate(estimate);
     } catch (error) {
