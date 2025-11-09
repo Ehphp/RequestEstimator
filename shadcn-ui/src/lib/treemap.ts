@@ -8,6 +8,8 @@
  * @date 2025-11-09
  */
 
+import { logger } from './logger';
+
 export interface TreemapItem {
     id: string;
     value: number;
@@ -41,18 +43,20 @@ export interface TreemapConfig {
  * Default configuration
  */
 export const DEFAULT_TREEMAP_CONFIG: TreemapConfig = {
-    padding: 12,
-    minSize: 150,
-    maxAspectRatio: 3,
+    padding: 16,      // Increased from 12 for better spacing
+    minSize: 200,     // Increased from 150 for better readability
+    maxAspectRatio: 2.5,  // Decreased from 3 for more balanced cards
     enableDynamicHeight: true
 };
 
 /**
- * Card size thresholds (tokenized for consistency)
+ * Card size thresholds - THREE VARIANTS for responsive layouts
+ * Defines breakpoints for responsive card layouts
  */
 export const CARD_SIZE_THRESHOLDS = {
-    small: { width: 250, height: 200 },
-    large: { width: 400, height: 350 }
+    small: { width: 280, height: 200 },    // Compact: minimal info
+    medium: { width: 400, height: 300 },   // Comfortable: balanced layout
+    large: { width: 400, height: 300 }     // Spacious: full details
 } as const;
 
 /**
@@ -142,7 +146,7 @@ function squarifyRecursive(
 
     if (width <= 0 || height <= 0) {
         if (process.env.NODE_ENV === 'development') {
-            console.warn('⚠️ Invalid dimensions:', { width, height });
+            logger.warn('⚠️ Invalid dimensions:', { width, height });
         }
         return [];
     }
@@ -232,26 +236,54 @@ function squarifyRecursive(
 }
 
 /**
- * Apply padding and minimum size constraints while respecting bounds
- * CRITICAL: This is where the previous implementation failed
+ * Apply padding and minimum size constraints while respecting proportions
+ * Uses DYNAMIC padding proportional to node size to better preserve proportions
+ * Only applies minSize if the node is significantly smaller (< 60% of minSize)
+ * This preserves treemap proportionality while ensuring minimum readability
  */
 function applyConstraints(
     nodes: TreemapNode[],
     containerWidth: number,
     containerHeight: number,
-    padding: number,
+    basePadding: number,
     minSize: number
 ): TreemapNode[] {
-    const halfPad = padding / 2;
+    const constrainedNodes = nodes.map(node => {
+        // Calculate DYNAMIC padding proportional to node size
+        // Larger nodes get more padding, smaller nodes get less
+        // This preserves proportion better than fixed padding
+        const nodeArea = node.width * node.height;
+        const containerArea = containerWidth * containerHeight;
+        const areaRatio = nodeArea / containerArea;
 
-    return nodes.map(node => {
-        // Apply padding
-        const x = node.x + halfPad;
-        const y = node.y + halfPad;
-        let width = Math.max(node.width - padding, minSize);
-        let height = Math.max(node.height - padding, minSize);
+        // Scale padding from 50% to 100% of base based on area ratio
+        // Small nodes (< 5% area): 50% padding
+        // Large nodes (> 20% area): 100% padding
+        const paddingScale = 0.5 + Math.min(areaRatio / 0.2, 1) * 0.5;
+        const dynamicPadding = basePadding * paddingScale;
+        const halfPadding = dynamicPadding / 2;
 
-        // CRITICAL FIX: Check if minSize enforcement violates bounds
+        // Apply padding by shrinking inward from all sides
+        let x = node.x + halfPadding;
+        let y = node.y + halfPadding;
+        let width = node.width - dynamicPadding;
+        let height = node.height - dynamicPadding;
+
+        // Only enforce minSize if the node is VERY small (< 60% of minSize)
+        // This preserves proportionality while ensuring minimum readability
+        const threshold = minSize * 0.6;
+        if (width < threshold) {
+            width = Math.min(minSize, node.width - dynamicPadding);
+        }
+        if (height < threshold) {
+            height = Math.min(minSize, node.height - dynamicPadding);
+        }
+
+        // Ensure non-negative dimensions with increased minimums for better readability
+        width = Math.max(width, 120);  // Increased from 50
+        height = Math.max(height, 100); // Increased from 50
+
+        // Check if dimensions violate bounds
         const exceedsRight = x + width > containerWidth;
         const exceedsBottom = y + height > containerHeight;
 
@@ -264,11 +296,25 @@ function applyConstraints(
             const scaleY = exceedsBottom ? availableHeight / height : 1;
             const scale = Math.min(scaleX, scaleY);
 
+            // If scaling would make the node too small, shift it instead
+            if (scale < 0.5) {
+                // Try to shift left/up to fit better
+                if (exceedsRight && x > halfPadding) {
+                    const shiftAmount = Math.min(x - halfPadding, (x + width) - containerWidth);
+                    x = Math.max(halfPadding, x - shiftAmount);
+                }
+                if (exceedsBottom && y > halfPadding) {
+                    const shiftAmount = Math.min(y - halfPadding, (y + height) - containerHeight);
+                    y = Math.max(halfPadding, y - shiftAmount);
+                }
+            }
+
+            // Apply scaling after potential shift
             width = width * scale;
             height = height * scale;
 
             if (process.env.NODE_ENV === 'development') {
-                console.warn('⚠️ Scaled node to fit bounds:', {
+                logger.warn('⚠️ Scaled node to fit bounds:', {
                     id: node.id,
                     scale: scale.toFixed(2),
                     finalSize: `${width.toFixed(0)}×${height.toFixed(0)}`
@@ -284,6 +330,101 @@ function applyConstraints(
             height
         };
     });
+
+    // Detect and resolve ALL overlaps iteratively
+    // Multiple passes until no overlaps remain or max iterations reached
+    const MAX_ITERATIONS = 10;
+    const minGap = basePadding / 2; // Minimum gap between nodes
+    let resolvedNodes = [...constrainedNodes];
+
+    for (let iteration = 0; iteration < MAX_ITERATIONS; iteration++) {
+        let hasOverlaps = false;
+        const adjustedNodes = [...resolvedNodes];
+
+        // Check each node for overlaps
+        for (let i = 0; i < adjustedNodes.length; i++) {
+            const node = adjustedNodes[i];
+            let bestX = node.x;
+            let bestY = node.y;
+            let foundOverlap = false;
+
+            // Check for overlaps with all other nodes
+            for (let j = 0; j < adjustedNodes.length; j++) {
+                if (i === j) continue;
+
+                const other = adjustedNodes[j];
+
+                // Check if rectangles overlap
+                const overlapX = !(node.x + node.width <= other.x || other.x + other.width <= node.x);
+                const overlapY = !(node.y + node.height <= other.y || other.y + other.height <= other.y);
+
+                if (overlapX && overlapY) {
+                    foundOverlap = true;
+                    hasOverlaps = true;
+
+                    // Calculate possible shift positions
+                    const rightOfOther = other.x + other.width + minGap;
+                    const belowOther = other.y + other.height + minGap;
+                    const leftOfOther = other.x - node.width - minGap;
+                    const aboveOther = other.y - node.height - minGap;                    // Check which positions are valid (within bounds)
+                    const canShiftRight = rightOfOther >= 0 && rightOfOther + node.width <= containerWidth;
+                    const canShiftDown = belowOther >= 0 && belowOther + node.height <= containerHeight;
+                    const canShiftLeft = leftOfOther >= 0 && leftOfOther + node.width <= containerWidth;
+                    const canShiftUp = aboveOther >= 0 && aboveOther + node.height <= containerHeight;
+
+                    // Prefer the shift that moves the node the least distance
+                    const shifts = [
+                        { x: rightOfOther, y: node.y, distance: Math.abs(rightOfOther - node.x), valid: canShiftRight },
+                        { x: node.x, y: belowOther, distance: Math.abs(belowOther - node.y), valid: canShiftDown },
+                        { x: leftOfOther, y: node.y, distance: Math.abs(leftOfOther - node.x), valid: canShiftLeft },
+                        { x: node.x, y: aboveOther, distance: Math.abs(aboveOther - node.y), valid: canShiftUp }
+                    ].filter(s => s.valid)
+                        .sort((a, b) => a.distance - b.distance);
+
+                    if (shifts.length > 0) {
+                        bestX = shifts[0].x;
+                        bestY = shifts[0].y;
+
+                        if (process.env.NODE_ENV === 'development') {
+                            logger.debug(`🔧 Iteration ${iteration + 1}: Shifted [${node.id}] to resolve overlap with [${other.id}]`, {
+                                from: `(${node.x.toFixed(0)},${node.y.toFixed(0)})`,
+                                to: `(${bestX.toFixed(0)},${bestY.toFixed(0)})`,
+                                distance: shifts[0].distance.toFixed(1)
+                            });
+                        }
+                        break; // Handle one overlap at a time per node
+                    }
+                }
+            }
+
+            if (foundOverlap) {
+                adjustedNodes[i] = {
+                    ...node,
+                    x: bestX,
+                    y: bestY
+                };
+            }
+        }
+
+        resolvedNodes = adjustedNodes;
+
+        // If no overlaps found, we're done
+        if (!hasOverlaps) {
+            if (process.env.NODE_ENV === 'development') {
+                logger.debug(`✅ Overlap resolution converged after ${iteration + 1} iteration(s)`);
+            }
+            break;
+        }
+
+        // Warn if we hit max iterations
+        if (iteration === MAX_ITERATIONS - 1 && hasOverlaps) {
+            if (process.env.NODE_ENV === 'development') {
+                logger.warn(`⚠️ Reached max iterations (${MAX_ITERATIONS}) with remaining overlaps`);
+            }
+        }
+    }
+
+    return resolvedNodes;
 }
 
 /**
@@ -334,12 +475,12 @@ export function generateTreemapLayout(
     if (cfg.enableDynamicHeight && height === 0) {
         height = calculateOptimalHeight(items.length, width, cfg.minSize);
         if (process.env.NODE_ENV === 'development') {
-            console.log('📏 Auto-calculated height:', height);
+            logger.debug('📏 Auto-calculated height:', height);
         }
     }
 
     if (process.env.NODE_ENV === 'development') {
-        console.log('🎨 Generating treemap:', {
+        logger.debug('🎨 Generating treemap:', {
             items: items.length,
             dimensions: `${width}×${height}`,
             config: cfg
@@ -349,7 +490,7 @@ export function generateTreemapLayout(
     // Validation
     if (items.length === 0 || width <= 0 || height <= 0) {
         if (process.env.NODE_ENV === 'development') {
-            console.warn('⚠️ Invalid input for treemap:', { items: items.length, width, height });
+            logger.warn('⚠️ Invalid input for treemap:', { items: items.length, width, height });
         }
         return [];
     }
@@ -361,23 +502,19 @@ export function generateTreemapLayout(
 
     if (validItems.length === 0) {
         if (process.env.NODE_ENV === 'development') {
-            console.warn('⚠️ No valid items after filtering');
+            logger.warn('⚠️ No valid items after filtering');
         }
         return [];
     }
 
-    // CRITICAL FIX: Reserve space for padding BEFORE calculating layout
-    const effectivePadding = cfg.padding * 2; // Account for both sides
-    const availableWidth = Math.max(width - effectivePadding, cfg.minSize);
-    const availableHeight = Math.max(height - effectivePadding, cfg.minSize);
-
-    // Generate base layout
+    // Generate base layout - use full container dimensions
+    // Padding will be applied by reducing node dimensions, not by shifting coordinates
     const nodes = squarifyRecursive(
         validItems,
-        cfg.padding,
-        cfg.padding,
-        availableWidth,
-        availableHeight
+        0,  // Start at origin
+        0,
+        width,  // Use full width
+        height  // Use full height
     );
 
     // Apply constraints (padding, minSize) with bounds checking
@@ -455,11 +592,11 @@ function validateLayout(nodes: TreemapNode[], width: number, height: number): vo
     }).filter(r => r.error > 0.1); // 10% tolerance
 
     if (proportionErrors.length > 0) {
-        console.warn('⚠️ Proportion errors > 10%:', proportionErrors);
+        logger.warn('⚠️ Proportion errors > 10%:', proportionErrors);
     }
 
     // Summary
-    console.log('✅ Layout validation:', {
+    logger.debug('✅ Layout validation:', {
         nodes: nodes.length,
         overlaps: overlapCount,
         outOfBounds: outOfBounds.length,
@@ -469,18 +606,22 @@ function validateLayout(nodes: TreemapNode[], width: number, height: number): vo
 }
 
 /**
- * Determine card size variant based on dimensions
+ * Determine card size variant based on dimensions - THREE VARIANTS
+ * Returns 'small', 'medium', or 'large' for responsive card layouts
  */
 export function getCardSizeVariant(width: number, height: number): 'small' | 'medium' | 'large' {
-    const { small, large } = CARD_SIZE_THRESHOLDS;
+    const { small, medium } = CARD_SIZE_THRESHOLDS;
 
+    // Use small layout for compact cards
     if (width < small.width || height < small.height) {
         return 'small';
     }
 
-    if (width >= large.width && height >= large.height) {
-        return 'large';
+    // Use medium layout for comfortable cards
+    if (width < medium.width || height < medium.height) {
+        return 'medium';
     }
 
-    return 'medium';
+    // Use large layout for spacious cards
+    return 'large';
 }

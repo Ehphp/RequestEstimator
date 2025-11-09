@@ -1,15 +1,14 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { ArrowLeft, Save, Info, AlertCircle, Copy, Sparkles, RotateCcw, User, Calendar, Tag, TrendingUp } from 'lucide-react';
+import { ArrowLeft, Save, Info, AlertCircle, Copy, Sparkles, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { useToast } from '@/hooks/use-toast';
 import { Requirement, Estimate, Activity, List, DefaultSource } from '../types';
 import { activities, risks } from '../data/catalog';
@@ -58,7 +57,7 @@ export function EstimateEditor({ requirement, list, onBack }: EstimateEditorProp
       if (!isMounted) return;
       setPreviousEstimates(estimates);
 
-      if (!isInitializedRef.current) {
+      if (!isInitializedRef.current && currentUser) {
         // Apply smart defaults on first load
         const { defaults, sources } = await getEstimateDefaults(requirement, list, currentUser);
         if (!isMounted) return;
@@ -186,14 +185,16 @@ export function EstimateEditor({ requirement, list, onBack }: EstimateEditorProp
 
     await saveEstimate(estimate);
 
-    // Update sticky defaults for future estimates
-    await updateStickyDefaults(currentUser, list.list_id, {
-      complexity: complexity as Estimate['complexity'],
-      environments: environments as Estimate['environments'],
-      reuse: reuse as Estimate['reuse'],
-      stakeholders: stakeholders as Estimate['stakeholders'],
-      included_activities: selectedActivities
-    });
+    // Update sticky defaults for future estimates (if user is authenticated)
+    if (currentUser) {
+      await updateStickyDefaults(currentUser, list.list_id, {
+        complexity: complexity as Estimate['complexity'],
+        environments: environments as Estimate['environments'],
+        reuse: reuse as Estimate['reuse'],
+        stakeholders: stakeholders as Estimate['stakeholders'],
+        included_activities: selectedActivities
+      });
+    }
 
     // Show success toast
     toast({
@@ -233,7 +234,7 @@ export function EstimateEditor({ requirement, list, onBack }: EstimateEditorProp
       [field]: !prev[field]
     }));
 
-    if (!overriddenFields[field]) {
+    if (!overriddenFields[field] && currentUser) {
       // If switching back to default, recalculate defaults
       const { defaults } = await getEstimateDefaults(requirement, list, currentUser);
 
@@ -259,6 +260,8 @@ export function EstimateEditor({ requirement, list, onBack }: EstimateEditorProp
   };
 
   const handleResetAllDefaults = async () => {
+    if (!currentUser) return;
+
     const { defaults, sources } = await resetToDefaults(requirement, list, currentUser);
 
     setComplexity(defaults.complexity || '');
@@ -285,152 +288,109 @@ export function EstimateEditor({ requirement, list, onBack }: EstimateEditorProp
     return totalWeight;
   };
 
-  // Calculate expected contingency percentage for display
-  const getExpectedContingencyPct = () => {
-    const riskWeight = getTotalRiskWeight();
-    return Math.min(0.05 + riskWeight, 0.50);
+  // Get risk band based on score
+  const getRiskBand = (score: number): { band: string; color: string; bgColor: string } => {
+    if (score === 0) return { band: 'None', color: 'text-gray-600 dark:text-gray-400', bgColor: 'bg-gray-100 dark:bg-gray-800' };
+    if (score <= 10) return { band: 'Low', color: 'text-green-700 dark:text-green-400', bgColor: 'bg-green-50 dark:bg-green-900/30' };
+    if (score <= 20) return { band: 'Medium', color: 'text-yellow-700 dark:text-yellow-400', bgColor: 'bg-yellow-50 dark:bg-yellow-900/30' };
+    return { band: 'High', color: 'text-red-700 dark:text-red-400', bgColor: 'bg-red-50 dark:bg-red-900/30' };
   };
 
+  // Group risks by category
+  const risksByCategory = useMemo(() => {
+    const categories = ['Technical', 'Business', 'Governance', 'Integration'] as const;
+    return categories.map(cat => ({
+      category: cat,
+      risks: risks.filter(r => r.category === cat)
+    }));
+  }, []);
+
   return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-4">
-        <Button variant="outline" onClick={onBack}>
-          <ArrowLeft className="h-4 w-4 mr-2" />
-          Torna ai Requisiti
+    <div className="flex flex-col h-[calc(100vh-2rem)]">
+      {/* Compact Header */}
+      <div className="flex items-center gap-3 mb-3">
+        <Button variant="outline" size="sm" onClick={onBack}>
+          <ArrowLeft className="h-4 w-4 mr-1" />
+          Indietro
         </Button>
-        <div className="flex-1">
-          <h1 className="text-3xl font-bold">Stima Requisito</h1>
-          <p className="text-muted-foreground">{requirement.req_id}</p>
-          {list.preset_key && (
-            <Badge variant="outline" className="mt-2">
-              <Sparkles className="h-3 w-3 mr-1" />
-              Default intelligenti da preset {list.preset_key}
-            </Badge>
-          )}
+        <div className="flex-1 flex items-center gap-3">
+          <div>
+            <h1 className="text-xl font-bold">{requirement.req_id} - {requirement.title}</h1>
+            <div className="flex items-center gap-2 text-xs mt-0.5">
+              <Badge className={`${getPriorityColor(requirement.priority)} text-xs px-1.5 py-0`}>
+                {requirement.priority}
+              </Badge>
+              <Badge className={`${getStateColor(requirement.state)} text-xs px-1.5 py-0`}>
+                {requirement.state}
+              </Badge>
+              <span className="text-muted-foreground">{requirement.business_owner}</span>
+              {list.preset_key && (
+                <Badge variant="outline" className="text-xs">
+                  <Sparkles className="h-3 w-3 mr-1" />
+                  Preset {list.preset_key}
+                </Badge>
+              )}
+              {list.technology && (
+                <Badge variant="secondary" className="text-xs">
+                  {list.technology}
+                </Badge>
+              )}
+            </div>
+          </div>
         </div>
-        <Button variant="outline" onClick={handleResetAllDefaults}>
-          <RotateCcw className="h-4 w-4 mr-2" />
-          Ripristina tutti i default
+        <Button variant="outline" size="sm" onClick={handleResetAllDefaults}>
+          <RotateCcw className="h-4 w-4 mr-1" />
+          Reset
         </Button>
       </div>
 
-      {/* Compact Requirement Information Section */}
-      <Card className="border-l-4 border-l-primary">
-        <CardHeader className="pb-2">
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Info className="h-4 w-4" />
-            Informazioni Requisito
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="pt-0 space-y-2">
-          <div>
-            <h3 className="font-semibold text-sm mb-1">{requirement.title}</h3>
-            <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2">{requirement.description}</p>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2 text-xs">
-            <Badge className={`${getPriorityColor(requirement.priority)} text-xs px-2 py-0.5`}>
-              {requirement.priority}
-            </Badge>
-            <Badge className={`${getStateColor(requirement.state)} text-xs px-2 py-0.5`}>
-              {requirement.state}
-            </Badge>
-            <div className="flex items-center gap-1">
-              <User className="h-3 w-3 text-muted-foreground" />
-              <span className="text-muted-foreground">{requirement.business_owner}</span>
-            </div>
-            <div className="flex items-center gap-1">
-              <Calendar className="h-3 w-3 text-muted-foreground" />
-              <span className="text-muted-foreground">{new Date(requirement.created_on).toLocaleDateString('it-IT')}</span>
-            </div>
-            {requirement.last_estimated_on && (
-              <span className="text-muted-foreground">
-                • Ultima stima: {new Date(requirement.last_estimated_on).toLocaleDateString('it-IT')}
-              </span>
-            )}
-          </div>
-
-          {requirement.labels && (
-            <div className="flex items-center gap-1 flex-wrap">
-              <Tag className="h-3 w-3 text-muted-foreground" />
-              {requirement.labels.split(',').map((label, index) => (
-                <Badge key={index} variant="outline" className="text-xs px-1.5 py-0.5 h-5">
-                  {label.trim()}
-                </Badge>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
+      {/* Errors - Compact */}
       {errors.length > 0 && (
-        <Alert variant="destructive">
+        <Alert variant="destructive" className="mb-3 py-2">
           <AlertCircle className="h-4 w-4" />
-          <AlertDescription>
-            <ul className="list-disc list-inside">
-              {errors.map((error, index) => (
-                <li key={index}>{error}</li>
-              ))}
-            </ul>
+          <AlertDescription className="text-xs">
+            {errors.map((error, index) => (
+              <div key={index}>• {error}</div>
+            ))}
           </AlertDescription>
         </Alert>
       )}
 
+      {/* Previous Estimates - Compact inline */}
       {previousEstimates.length > 0 && (
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-lg">Stime Precedenti</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2">
-              {previousEstimates.slice(0, 3).map((estimate) => (
-                <div key={estimate.estimate_id} className="flex items-center justify-between p-3 bg-muted rounded-lg">
-                  <div className="flex-1">
-                    <p className="font-medium">
-                      Scenario {estimate.scenario} • {estimate.total_days} giorni
-                    </p>
-                    <p className="text-sm text-muted-foreground">
-                      {new Date(estimate.created_on).toLocaleDateString()} •
-                      {estimate.complexity}/{estimate.environments}/{estimate.reuse}/{estimate.stakeholders}
-                    </p>
-                    {estimate.default_json && (
-                      <Badge variant="secondary" className="text-xs mt-1">
-                        <Sparkles className="h-3 w-3 mr-1" />
-                        Con default intelligenti
-                      </Badge>
-                    )}
-                  </div>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => handleCloneEstimate(estimate)}
-                  >
-                    <Copy className="h-4 w-4 mr-1" />
-                    Clona
-                  </Button>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+        <div className="flex items-center gap-2 mb-3 p-2 bg-muted/50 rounded-lg">
+          <span className="text-xs font-medium text-muted-foreground">Stime precedenti:</span>
+          {previousEstimates.slice(0, 2).map((estimate) => (
+            <Button
+              key={estimate.estimate_id}
+              size="sm"
+              variant="outline"
+              className="h-7 text-xs"
+              onClick={() => handleCloneEstimate(estimate)}
+            >
+              <Copy className="h-3 w-3 mr-1" />
+              {estimate.scenario}: {estimate.total_days}gg
+            </Button>
+          ))}
+        </div>
       )}
 
-      {/* Optimized 3-Column Layout */}
-      <div className="grid gap-4 xl:grid-cols-3 lg:grid-cols-2 grid-cols-1">
+      {/* Optimized 3-Column Layout - Fills remaining viewport height */}
+      <div className="grid gap-3 xl:grid-cols-3 lg:grid-cols-2 grid-cols-1 flex-1 overflow-hidden">
         {/* Column 1: Scenario & Drivers */}
-        <Card className="h-fit">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-lg">Scenario & Driver</CardTitle>
+        <Card className="flex flex-col overflow-hidden">
+          <CardHeader className="pb-2 flex-shrink-0">
+            <CardTitle className="text-base">Scenario & Driver</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3">
+          <CardContent className="space-y-2 overflow-y-auto flex-1">
             <div>
-              <Label htmlFor="scenario" className="text-sm">Scenario</Label>
+              <Label htmlFor="scenario" className="text-xs">Scenario</Label>
               <Input
                 id="scenario"
                 value={scenario}
                 onChange={(e) => setScenario(e.target.value)}
                 placeholder="es. A, B, C"
-                className="mt-1"
+                className="mt-1 h-8 text-sm"
               />
             </div>
 
@@ -477,10 +437,10 @@ export function EstimateEditor({ requirement, list, onBack }: EstimateEditorProp
         </Card>
 
         {/* Column 2: Activity Selection */}
-        <Card className="h-fit">
-          <CardHeader className="pb-3">
+        <Card className="flex flex-col overflow-hidden">
+          <CardHeader className="pb-2 flex-shrink-0">
             <div className="flex items-center justify-between">
-              <CardTitle className="text-lg">Selezione Attività</CardTitle>
+              <CardTitle className="text-base">Selezione Attività</CardTitle>
               {getDefaultSource('activities') && (
                 <DefaultPill
                   source={getDefaultSource('activities')!.source}
@@ -490,87 +450,93 @@ export function EstimateEditor({ requirement, list, onBack }: EstimateEditorProp
               )}
             </div>
           </CardHeader>
-          <CardContent className="space-y-2">
-            {Object.entries(groupedActivities).map(([group, groupActivities]) => (
-              <div key={group}>
-                <h4 className="font-semibold text-sm mb-2 text-primary">{group}</h4>
-                <div className="space-y-2">
-                  {groupActivities.map((activity) => (
-                    <div key={activity.activity_code} className="flex items-center space-x-2">
-                      <Checkbox
-                        id={activity.activity_code}
-                        checked={selectedActivities.includes(activity.activity_code)}
-                        onCheckedChange={(checked) => {
-                          if (checked) {
-                            setSelectedActivities([...selectedActivities, activity.activity_code]);
-                          } else {
-                            setSelectedActivities(selectedActivities.filter(id => id !== activity.activity_code));
-                          }
-                        }}
-                      />
-                      <div className="flex-1 flex items-center gap-2">
-                        <label
-                          htmlFor={activity.activity_code}
-                          className="text-sm font-medium cursor-pointer"
-                        >
-                          {activity.display_name} ({activity.base_days}gg)
-                        </label>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Info className="h-4 w-4 text-muted-foreground cursor-help" />
-                          </TooltipTrigger>
-                          <TooltipContent className="max-w-xs">
-                            <p>{activity.helper_short}</p>
-                          </TooltipContent>
-                        </Tooltip>
-                        <Dialog>
-                          <DialogTrigger asChild>
-                            <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
-                              <Info className="h-3 w-3" />
-                            </Button>
-                          </DialogTrigger>
-                          <DialogContent className="max-w-2xl">
-                            <DialogHeader>
-                              <DialogTitle>{activity.display_name}</DialogTitle>
-                            </DialogHeader>
-                            <div className="space-y-4">
-                              <div>
-                                <p className="font-semibold">Giorni Base: {activity.base_days}</p>
-                                <p className="text-sm text-muted-foreground">Gruppo: {activity.driver_group}</p>
-                              </div>
-                              <div>
-                                <h4 className="font-semibold mb-2">Descrizione Breve</h4>
-                                <p className="text-sm">{activity.helper_short}</p>
-                              </div>
-                              <div>
-                                <h4 className="font-semibold mb-2">Dettagli Completi</h4>
-                                <div className="text-sm whitespace-pre-line">{activity.helper_long}</div>
-                              </div>
-                            </div>
-                          </DialogContent>
-                        </Dialog>
+          <CardContent className="overflow-y-auto flex-1 p-2">
+            <Accordion type="multiple" defaultValue={[Object.keys(groupedActivities)[Object.keys(groupedActivities).length - 1]]} className="w-full">
+              {Object.entries(groupedActivities).map(([group, groupActivities]) => {
+                const selectedCount = groupActivities.filter(a => selectedActivities.includes(a.activity_code)).length;
+                const totalCount = groupActivities.length;
+
+                return (
+                  <AccordionItem key={group} value={group}>
+                    <AccordionTrigger className="text-xs font-semibold text-primary hover:no-underline py-2">
+                      <div className="flex items-center justify-between w-full pr-2">
+                        <span>{group}</span>
+                        <Badge variant="secondary" className="text-xs px-1.5">
+                          {selectedCount}/{totalCount}
+                        </Badge>
                       </div>
-                    </div>
-                  ))}
-                </div>
-                {group !== 'Analytics' && <Separator className="my-2" />}
-              </div>
-            ))}
+                    </AccordionTrigger>
+                    <AccordionContent className="space-y-1.5 pt-1 pb-2">
+                      {groupActivities.map((activity) => (
+                        <div key={activity.activity_code} className="flex items-start space-x-2">
+                          <Checkbox
+                            id={activity.activity_code}
+                            checked={selectedActivities.includes(activity.activity_code)}
+                            onCheckedChange={(checked) => {
+                              if (checked) {
+                                setSelectedActivities([...selectedActivities, activity.activity_code]);
+                              } else {
+                                setSelectedActivities(selectedActivities.filter(id => id !== activity.activity_code));
+                              }
+                            }}
+                            className="mt-0.5"
+                          />
+                          <div className="flex-1 flex items-center gap-1.5 min-w-0">
+                            <label
+                              htmlFor={activity.activity_code}
+                              className="text-xs font-medium cursor-pointer flex-1 truncate"
+                              title={activity.display_name}
+                            >
+                              {activity.display_name} ({activity.base_days}gg)
+                            </label>
+                            <Dialog>
+                              <DialogTrigger asChild>
+                                <Button variant="ghost" size="sm" className="h-5 w-5 p-0 flex-shrink-0">
+                                  <Info className="h-3 w-3" />
+                                </Button>
+                              </DialogTrigger>
+                              <DialogContent className="max-w-2xl">
+                                <DialogHeader>
+                                  <DialogTitle>{activity.display_name}</DialogTitle>
+                                </DialogHeader>
+                                <div className="space-y-3">
+                                  <div>
+                                    <p className="font-semibold">Giorni Base: {activity.base_days}</p>
+                                    <p className="text-sm text-muted-foreground">Gruppo: {activity.driver_group}</p>
+                                  </div>
+                                  <div>
+                                    <h4 className="font-semibold mb-2">Descrizione Breve</h4>
+                                    <p className="text-sm">{activity.helper_short}</p>
+                                  </div>
+                                  <div>
+                                    <h4 className="font-semibold mb-2">Dettagli Completi</h4>
+                                    <div className="text-sm whitespace-pre-line">{activity.helper_long}</div>
+                                  </div>
+                                </div>
+                              </DialogContent>
+                            </Dialog>
+                          </div>
+                        </div>
+                      ))}
+                    </AccordionContent>
+                  </AccordionItem>
+                );
+              })}
+            </Accordion>
           </CardContent>
         </Card>
 
         {/* Column 3: Risks & Summary (Stacked) */}
-        <div className="space-y-4">
-          {/* Risks & Contingency - Now More Prominent */}
-          <Card className="border-2 border-orange-200 bg-orange-50/30">
-            <CardHeader className="pb-3">
+        <div className="flex flex-col gap-3 overflow-hidden">
+          {/* Risks & Contingency */}
+          <Card className="border-2 border-orange-200 dark:border-orange-800 bg-orange-50/30 dark:bg-orange-950/30 flex flex-col overflow-hidden" style={{ maxHeight: '40%' }}>
+            <CardHeader className="pb-2 flex-shrink-0">
               <div className="flex items-center justify-between">
-                <CardTitle className="text-lg text-orange-900 flex items-center gap-2">
-                  Rischi & Contingenza
+                <CardTitle className="text-sm text-orange-900 dark:text-orange-100 flex items-center gap-2">
+                  Rischi Power Platform
                   {selectedRisks.length > 0 && (
-                    <Badge variant="outline" className="text-orange-700 border-orange-300">
-                      <TrendingUp className="h-3 w-3 mr-1" />
-                      +{Math.round(getExpectedContingencyPct() * 100)}% contingenza
+                    <Badge variant="outline" className="text-xs text-orange-700 dark:text-orange-300 border-orange-300 dark:border-orange-700">
+                      {selectedRisks.length} sel.
                     </Badge>
                   )}
                 </CardTitle>
@@ -582,134 +548,166 @@ export function EstimateEditor({ requirement, list, onBack }: EstimateEditorProp
                   />
                 )}
               </div>
-              {/* Show current risk impact */}
-              <div className="bg-orange-100 p-2 rounded text-sm">
-                <div className="flex justify-between items-center">
-                  <span className="text-orange-800">Impatto Rischi:</span>
-                  <Badge variant="outline" className="bg-orange-100 text-orange-800">
-                    {selectedRisks.length} rischi • Peso totale: {getTotalRiskWeight()}
-                  </Badge>
-                </div>
-                <div className="text-xs text-orange-700 mt-1">
-                  Contingenza attesa: {Math.round(getExpectedContingencyPct() * 100)}% (5% base + {Math.round(getTotalRiskWeight() * 100)}% rischi)
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="space-y-2">
-                {risks.map((risk) => (
-                  <div key={risk.risk_id} className="flex items-center space-x-2">
-                    <Checkbox
-                      id={risk.risk_id}
-                      checked={selectedRisks.includes(risk.risk_id)}
-                      onCheckedChange={(checked) => {
-                        if (checked) {
-                          setSelectedRisks([...selectedRisks, risk.risk_id]);
-                        } else {
-                          setSelectedRisks(selectedRisks.filter(id => id !== risk.risk_id));
-                        }
-                      }}
-                    />
-                    <div className="flex-1">
-                      <label
-                        htmlFor={risk.risk_id}
-                        className="text-sm font-medium cursor-pointer"
-                      >
-                        {risk.risk_item}
-                        <Badge variant="secondary" className="ml-2 text-xs">
-                          +{Math.round(risk.weight * 100)}%
-                        </Badge>
-                      </label>
-                      <p className="text-xs text-muted-foreground">{risk.guidance}</p>
-                    </div>
+              {selectedRisks.length > 0 && (
+                <div className="mt-2 space-y-1.5">
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="text-orange-800 dark:text-orange-200">Risk Score: {getTotalRiskWeight()} punti</span>
+                    <span className={`font-semibold ${getRiskBand(getTotalRiskWeight()).color}`}>
+                      {getRiskBand(getTotalRiskWeight()).band}
+                    </span>
                   </div>
-                ))}
-              </div>
+                  {/* Progress bar */}
+                  <div className="w-full bg-orange-200 dark:bg-orange-900 rounded-full h-2">
+                    <div
+                      className={`h-2 rounded-full transition-all ${getTotalRiskWeight() <= 10 ? 'bg-green-500' :
+                          getTotalRiskWeight() <= 20 ? 'bg-yellow-500' :
+                            'bg-red-500'
+                        }`}
+                      style={{ width: `${Math.min((getTotalRiskWeight() / 30) * 100, 100)}%` }}
+                    />
+                  </div>
+                  <div className="flex justify-between text-xs text-orange-700 dark:text-orange-300">
+                    <span>0-10: Low (10%)</span>
+                    <span>11-20: Med (20%)</span>
+                    <span>21+: High (35%)</span>
+                  </div>
+                </div>
+              )}
+            </CardHeader>
+            <CardContent className="space-y-2 overflow-y-auto flex-1">
+              <Accordion type="multiple" defaultValue={['Technical', 'Business']} className="space-y-1">
+                {risksByCategory.map(({ category, risks: catRisks }) => {
+                  const selectedCount = catRisks.filter(r => selectedRisks.includes(r.risk_id)).length;
+                  const categoryIcons = {
+                    Technical: '⚙️',
+                    Business: '💼',
+                    Governance: '🛡️',
+                    Integration: '🔗'
+                  };
+
+                  return (
+                    <AccordionItem key={category} value={category} className="border rounded-md px-2">
+                      <AccordionTrigger className="py-2 hover:no-underline">
+                        <div className="flex items-center gap-2 text-xs">
+                          <span>{categoryIcons[category as keyof typeof categoryIcons]}</span>
+                          <span className="font-medium">{category}</span>
+                          {selectedCount > 0 && (
+                            <Badge variant="secondary" className="text-xs h-4 px-1">
+                              {selectedCount}
+                            </Badge>
+                          )}
+                        </div>
+                      </AccordionTrigger>
+                      <AccordionContent className="space-y-1.5 pb-2">
+                        {catRisks.map((risk) => (
+                          <div key={risk.risk_id} className="flex items-start space-x-2 group">
+                            <Checkbox
+                              id={risk.risk_id}
+                              checked={selectedRisks.includes(risk.risk_id)}
+                              onCheckedChange={(checked) => {
+                                if (checked) {
+                                  setSelectedRisks([...selectedRisks, risk.risk_id]);
+                                } else {
+                                  setSelectedRisks(selectedRisks.filter(id => id !== risk.risk_id));
+                                }
+                              }}
+                              className="mt-0.5"
+                            />
+                            <div className="flex-1 min-w-0">
+                              <Dialog>
+                                <DialogTrigger asChild>
+                                  <label
+                                    htmlFor={risk.risk_id}
+                                    className="text-xs font-medium cursor-help hover:underline block"
+                                  >
+                                    {risk.risk_item}
+                                    <Badge variant="outline" className="ml-1 text-xs px-1">
+                                      +{risk.weight}pt
+                                    </Badge>
+                                  </label>
+                                </DialogTrigger>
+                                <DialogContent className="max-w-md">
+                                  <DialogHeader>
+                                    <DialogTitle className="flex items-center gap-2">
+                                      <span>{categoryIcons[risk.category as keyof typeof categoryIcons]}</span>
+                                      <span>{risk.risk_item}</span>
+                                    </DialogTitle>
+                                  </DialogHeader>
+                                  <div className="space-y-3">
+                                    <div>
+                                      <h4 className="text-sm font-semibold mb-1">Descrizione</h4>
+                                      <p className="text-sm text-muted-foreground">{risk.guidance}</p>
+                                    </div>
+                                    <div className="bg-blue-50 dark:bg-blue-950/30 p-3 rounded-lg border border-blue-200 dark:border-blue-800">
+                                      <h4 className="text-sm font-semibold mb-1 text-blue-900 dark:text-blue-100">
+                                        💡 Come mitigare
+                                      </h4>
+                                      <p className="text-sm text-blue-800 dark:text-blue-200">{risk.mitigation}</p>
+                                    </div>
+                                    <div className="flex items-center justify-between text-xs text-muted-foreground">
+                                      <span>Categoria: {risk.category}</span>
+                                      <span className="font-semibold">Peso: +{risk.weight} punti</span>
+                                    </div>
+                                  </div>
+                                </DialogContent>
+                              </Dialog>
+                              <p className="text-xs text-muted-foreground line-clamp-1">{risk.guidance}</p>
+                            </div>
+                          </div>
+                        ))}
+                      </AccordionContent>
+                    </AccordionItem>
+                  );
+                })}
+              </Accordion>
             </CardContent>
           </Card>
 
-          {/* Summary - Now More Prominent */}
-          <Card className="border-2 border-primary bg-primary/5">
-            <CardHeader className="pb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <CardTitle className="text-lg text-primary">Riepilogo Calcolo</CardTitle>
-              <Badge variant="outline" className="text-xs uppercase tracking-wide text-primary border-primary/40 bg-white">
-                Calcolo automatico
+          {/* Summary - NO SCROLL, sempre visibile */}
+          <Card className="border-2 border-primary bg-primary/5 flex flex-col flex-shrink-0">
+            <CardHeader className="pb-2 flex-shrink-0 flex flex-row items-center justify-between">
+              <CardTitle className="text-base text-primary">Riepilogo</CardTitle>
+              <Badge variant="outline" className="text-xs text-primary border-primary/40">
+                Auto
               </Badge>
             </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="flex items-center gap-2 rounded-md border border-dashed border-primary/30 bg-primary/10 px-3 py-2 text-sm text-muted-foreground">
-                <Sparkles className="h-4 w-4 text-primary" />
-                <span>La stima si aggiorna automaticamente ad ogni modifica dei parametri.</span>
-              </div>
-
+            <CardContent className="space-y-2 flex-shrink-0">
               {calculatedEstimate ? (
-                <div className="space-y-3">
-                  <div className="grid grid-cols-2 gap-3 text-sm">
-                    <div className="text-center p-2 bg-muted rounded">
-                      <p className="text-muted-foreground text-xs">Giorni Base</p>
+                <div className="space-y-2">
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div className="text-center p-1.5 bg-muted rounded">
+                      <p className="text-muted-foreground text-xs">Base</p>
                       <p className="font-semibold">{calculatedEstimate.activities_base_days}</p>
                     </div>
-                    <div className="text-center p-2 bg-muted rounded">
-                      <p className="text-muted-foreground text-xs">Moltiplicatore</p>
+                    <div className="text-center p-1.5 bg-muted rounded">
+                      <p className="text-muted-foreground text-xs">Molt.</p>
                       <p className="font-semibold">x{calculatedEstimate.driver_multiplier}</p>
                     </div>
-                    <div className="text-center p-2 bg-muted rounded">
-                      <p className="text-muted-foreground text-xs">Subtotal</p>
-                      <p className="font-semibold">{calculatedEstimate.subtotal_days} giorni</p>
+                    <div className="text-center p-1.5 bg-muted rounded">
+                      <p className="text-muted-foreground text-xs">Subtot.</p>
+                      <p className="font-semibold">{calculatedEstimate.subtotal_days}gg</p>
                     </div>
-                    <div className="text-center p-2 bg-orange-50 rounded border border-orange-200">
-                      <p className="text-muted-foreground text-xs">Contingenza</p>
-                      <p className="font-semibold text-xs text-orange-800">
-                        {calculatedEstimate.contingency_days} giorni
-                        <br />({Math.round((calculatedEstimate.contingency_pct || 0) * 100)}%)
+                    <div className="text-center p-1.5 bg-orange-50 dark:bg-orange-900/50 rounded border border-orange-200 dark:border-orange-800">
+                      <p className="text-muted-foreground text-xs">Conting.</p>
+                      <p className="font-semibold text-xs text-orange-800 dark:text-orange-300">
+                        {calculatedEstimate.contingency_days}gg ({Math.round((calculatedEstimate.contingency_pct || 0) * 100)}%)
                       </p>
                     </div>
                   </div>
 
-                  <div className="text-center p-4 bg-primary/10 rounded-lg border border-primary/20">
-                    <p className="text-muted-foreground text-sm">Totale Finale</p>
-                    <p className="text-3xl font-bold text-primary">{calculatedEstimate.total_days} giorni</p>
+                  <div className="text-center p-3 bg-primary/10 rounded-lg border border-primary/20">
+                    <p className="text-muted-foreground text-xs">Totale</p>
+                    <p className="text-2xl font-bold text-primary">{calculatedEstimate.total_days} gg</p>
                   </div>
 
-                  {/* Show risk calculation details */}
-                  {selectedRisks.length > 0 && (
-                    <div className="bg-orange-50 p-3 rounded-lg border border-orange-200">
-                      <p className="text-sm font-medium text-orange-900 mb-2">
-                        <AlertCircle className="h-4 w-4 inline mr-1" />
-                        Dettaglio Rischi:
-                      </p>
-                      <div className="text-xs text-orange-800 space-y-1">
-                        <p>• {selectedRisks.length} rischi selezionati</p>
-                        <p>• Peso totale: {getTotalRiskWeight()} ({Math.round(getTotalRiskWeight() * 100)}%)</p>
-                        <p>• Contingenza: 5% base + {Math.round(getTotalRiskWeight() * 100)}% rischi = {Math.round((calculatedEstimate.contingency_pct || 0) * 100)}%</p>
-                        <p>• Su {calculatedEstimate.subtotal_days} giorni = {calculatedEstimate.contingency_days} giorni contingenza</p>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Show applied defaults summary */}
-                  {defaultSources.length > 0 && (
-                    <div className="bg-blue-50 p-3 rounded-lg border border-blue-200">
-                      <p className="text-sm font-medium text-blue-900 mb-2">
-                        <Sparkles className="h-4 w-4 inline mr-1" />
-                        Default applicati:
-                      </p>
-                      <div className="text-xs text-blue-800 space-y-1">
-                        {defaultSources.filter(s => !overriddenFields[s.field]).map((source, index) => (
-                          <p key={index}>• {source.field}: {source.source}</p>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  <Button onClick={handleSave} className="w-full" size="lg">
+                  <Button onClick={handleSave} className="w-full" size="sm">
                     <Save className="h-4 w-4 mr-2" />
                     Salva Stima
                   </Button>
                 </div>
               ) : (
-                <p className="text-sm text-muted-foreground">
-                  Compila i driver e seleziona almeno un'attivita per vedere il totale.
+                <p className="text-xs text-muted-foreground text-center py-4">
+                  Compila i parametri per vedere la stima
                 </p>
               )}
             </CardContent>

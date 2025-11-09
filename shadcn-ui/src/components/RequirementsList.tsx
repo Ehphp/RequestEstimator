@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useState, useRef, FormEvent, SyntheticEvent } from 'react';
+﻿import { useEffect, useMemo, useState, useRef, FormEvent, SyntheticEvent } from 'react';
 import { ArrowLeft, Plus, Calendar, User, Tag, BarChart3, List as ListIcon, LayoutGrid, Search, X, PenSquare, Trash2, MoreHorizontal } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -32,7 +33,7 @@ import { PRIORITY_OPTIONS, STATE_OPTIONS } from '@/constants/requirements';
 import { DefaultPill } from '@/components/DefaultPill';
 import { RequirementFormFields, RequirementFormStateBase } from './requirements/RequirementFormFields';
 import { List, Requirement, DefaultSource } from '../types';
-import { saveRequirement, generateId, getLatestEstimates, deleteRequirement } from '../lib/storage';
+import { saveRequirement, generateId, getLatestEstimates, deleteRequirement, saveList } from '../lib/storage';
 import { getRequirementDefaults } from '../lib/defaults';
 import { logger } from '@/lib/logger';
 import { DashboardView } from './DashboardView';
@@ -44,6 +45,7 @@ interface RequirementsListProps {
   onBack: () => void;
   onSelectRequirement: (requirement: Requirement) => void;
   onRequirementsChange: () => void;
+  onListUpdated: (list: List) => void;
 }
 
 type RequirementFilters = {
@@ -126,7 +128,8 @@ export function RequirementsList({
   requirements,
   onBack,
   onSelectRequirement,
-  onRequirementsChange
+  onRequirementsChange,
+  onListUpdated
 }: RequirementsListProps) {
   const { toast } = useToast();
   const titleInputRef = useRef<HTMLInputElement>(null) as React.RefObject<HTMLInputElement>;
@@ -159,12 +162,68 @@ export function RequirementsList({
     setSearchParams(params, { replace: true });
   };
 
+  const createListFormState = (baseList: List) => ({
+    owner: baseList.owner ?? '',
+    period: baseList.period ?? '',
+    technology: baseList.technology ?? '',
+    status: baseList.status,
+    notes: baseList.notes ?? ''
+  });
+
+  const [isEditListDialogOpen, setIsEditListDialogOpen] = useState(false);
+  const [listFormData, setListFormData] = useState(() => createListFormState(list));
+  const [listUpdating, setListUpdating] = useState(false);
+  const openListEditDialog = () => {
+    setListFormData(createListFormState(list));
+    setIsEditListDialogOpen(true);
+  };
+  const updateListFormField = (field: keyof typeof listFormData, value: string) =>
+    setListFormData(prev => ({ ...prev, [field]: value }));
+  const handleSubmitListUpdate = async (event: FormEvent) => {
+    event.preventDefault();
+    setListUpdating(true);
+    try {
+      const trimmedOwner = listFormData.owner.trim();
+      const trimmedPeriod = listFormData.period.trim();
+      const trimmedTechnology = listFormData.technology.trim();
+      const trimmedNotes = listFormData.notes.trim();
+      const updatedList: List = {
+        ...list,
+        owner: trimmedOwner || undefined,
+        period: trimmedPeriod || undefined,
+        technology: trimmedTechnology || undefined,
+        status: listFormData.status,
+        notes: trimmedNotes || undefined
+      };
+      await saveList(updatedList);
+      onListUpdated(updatedList);
+      setIsEditListDialogOpen(false);
+      toast({
+        title: 'Lista aggiornata',
+        description: 'I metadati della lista sono stati salvati.'
+      });
+    } catch (error) {
+      logger.error('Error updating list', error);
+      toast({
+        variant: 'destructive',
+        title: 'Errore',
+        description: 'Impossibile aggiornare la lista.'
+      });
+    } finally {
+      setListUpdating(false);
+    }
+  };
+
   // Focus management for dialog
   useEffect(() => {
     if (isFormDialogOpen && titleInputRef.current) {
       setTimeout(() => titleInputRef.current?.focus(), 100);
     }
   }, [isFormDialogOpen]);
+
+  useEffect(() => {
+    setListFormData(createListFormState(list));
+  }, [list]);
 
   useEffect(() => {
     let isMounted = true;
@@ -402,7 +461,7 @@ export function RequirementsList({
   filters.priorities.forEach((priority) => {
     filterChips.push({
       key: `priority-${priority}`,
-      label: `Priorità: ${PRIORITY_LABEL[priority]}`,
+      label: `Priorita : ${PRIORITY_LABEL[priority]}`,
       onRemove: () => handleTogglePriority(priority)
     });
   });
@@ -690,7 +749,7 @@ export function RequirementsList({
       await deleteRequirement(requirementPendingDeletion.req_id);
       toast({
         title: 'Requisito eliminato',
-        description: `Il requisito "${requirementPendingDeletion.title}" è stato rimosso.`
+        description: `Il requisito "${requirementPendingDeletion.title}" Ã¨ stato rimosso.`
       });
       closeDeleteRequirementDialog();
       onRequirementsChange();
@@ -808,18 +867,34 @@ export function RequirementsList({
     <div className="space-y-4">
       {/* Breadcrumb e Tabs */}
       <div className="flex items-center justify-between gap-4">
-        <div className="flex items-center gap-4">
+        <div className="flex flex-wrap items-center gap-3">
           <Button variant="ghost" onClick={onBack} className="gap-2">
             <ArrowLeft className="h-4 w-4" />
             <span className="text-muted-foreground">Liste</span>
             <span className="text-muted-foreground">/</span>
             <span className="font-semibold">{list.name}</span>
           </Button>
-          <span className="text-muted-foreground">•</span>
-          <span className="text-sm text-muted-foreground">{list.description}</span>
+          {list.description && (
+            <>
+              <span className="text-muted-foreground">·</span>
+              <span className="text-sm text-muted-foreground">{list.description}</span>
+            </>
+          )}
+          {list.technology && (
+            <>
+              <span className="text-muted-foreground">·</span>
+              <Badge variant="secondary" className="text-[11px] px-2 py-0.5">
+                {list.technology}
+              </Badge>
+            </>
+          )}
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3 justify-end">
+          <Button variant="outline" size="sm" className="gap-2" onClick={openListEditDialog}>
+            <PenSquare className="h-4 w-4" />
+            Modifica Lista
+          </Button>
           <Tabs value={activeTab} onValueChange={handleTabChange}>
             <TabsList className="h-10 bg-muted/50">
               <TabsTrigger
@@ -888,6 +963,93 @@ export function RequirementsList({
                   </Button>
                   <Button type="submit" disabled={formSubmitting || !formData.title.trim()}>
                     {formSubmitting ? 'Salvataggio...' : editingRequirement ? 'Aggiorna' : 'Crea Requisito'}
+                  </Button>
+                </div>
+              </form>
+            </DialogContent>
+          </Dialog>
+
+          <Dialog open={isEditListDialogOpen} onOpenChange={setIsEditListDialogOpen}>
+            <DialogContent className="max-w-lg">
+              <DialogHeader>
+                <DialogTitle>Modifica metadati lista</DialogTitle>
+                <DialogDescription>
+                  Aggiorna tecnologia, owner e note. I requisiti esistenti non verranno modificati.
+                </DialogDescription>
+              </DialogHeader>
+              <form onSubmit={handleSubmitListUpdate} className="space-y-4">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium" htmlFor="list-owner-field">
+                      Owner
+                    </label>
+                    <Input
+                      id="list-owner-field"
+                      value={listFormData.owner}
+                      onChange={(event) => updateListFormField('owner', event.target.value)}
+                      placeholder="Nome referente"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium" htmlFor="list-period-field">
+                      Periodo
+                    </label>
+                    <Input
+                      id="list-period-field"
+                      value={listFormData.period}
+                      onChange={(event) => updateListFormField('period', event.target.value)}
+                      placeholder="es. Q1 2025"
+                    />
+                  </div>
+                  <div className="space-y-1.5 sm:col-span-2">
+                    <label className="text-xs font-medium" htmlFor="list-technology-field">
+                      Tecnologia
+                    </label>
+                    <Input
+                      id="list-technology-field"
+                      value={listFormData.technology}
+                      onChange={(event) => updateListFormField('technology', event.target.value)}
+                      placeholder="es. Power Platform, Dynamics, SAP"
+                      required
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium" htmlFor="list-status-field">
+                      Status
+                    </label>
+                    <Select
+                      value={listFormData.status}
+                      onValueChange={(value: List['status']) => updateListFormField('status', value)}
+                    >
+                      <SelectTrigger id="list-status-field">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Draft">Draft</SelectItem>
+                        <SelectItem value="Active">Active</SelectItem>
+                        <SelectItem value="Archived">Archived</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium" htmlFor="list-notes-field">
+                    Note interne
+                  </label>
+                  <Textarea
+                    id="list-notes-field"
+                    value={listFormData.notes}
+                    onChange={(event) => updateListFormField('notes', event.target.value)}
+                    placeholder="Annotazioni per il team"
+                    rows={3}
+                  />
+                </div>
+                <div className="flex justify-end gap-2">
+                  <Button type="button" variant="outline" onClick={() => setIsEditListDialogOpen(false)}>
+                    Annulla
+                  </Button>
+                  <Button type="submit" disabled={listUpdating}>
+                    {listUpdating ? 'Salvataggio...' : 'Salva modifiche'}
                   </Button>
                 </div>
               </form>
@@ -966,8 +1128,8 @@ export function RequirementsList({
                 </div>
 
                 <FilterPopover
-                  buttonLabel="Priorità"
-                  title="Priorità"
+                  buttonLabel="Priorita "
+                  title="Priorita "
                   options={PRIORITY_OPTIONS}
                   selectedValues={filters.priorities}
                   onToggle={(value) => handleTogglePriority(value as Requirement['priority'])}
@@ -1030,9 +1192,9 @@ export function RequirementsList({
                     <SelectValue placeholder="Ordinamento" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="created-desc">Più recenti</SelectItem>
+                    <SelectItem value="created-desc">PiÃ¹ recenti</SelectItem>
                     <SelectItem value="created-asc">Meno recenti</SelectItem>
-                    <SelectItem value="priority">Priorità</SelectItem>
+                    <SelectItem value="priority">Priorita </SelectItem>
                     <SelectItem value="title">Titolo A-Z</SelectItem>
                     <SelectItem value="estimate-desc">Stima maggiore</SelectItem>
                     <SelectItem value="estimate-asc">Stima minore</SelectItem>
@@ -1073,7 +1235,14 @@ export function RequirementsList({
                   }}
                 />
               ) : (
-                <div className={viewMode === 'grid' ? 'grid gap-4 sm:grid-cols-2 xl:grid-cols-3' : 'flex flex-col gap-3'}>
+                <div
+                  className={viewMode === 'grid' ? 'grid gap-3 h-[calc(100vh-280px)]' : 'flex flex-col gap-3'}
+                  style={viewMode === 'grid' ? {
+                    gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))',
+                    gridAutoRows: '1fr',
+                    gridAutoFlow: 'dense'
+                  } : undefined}
+                >
                   {visibleRequirements.map(({ requirement, labels }) => {
                     const priorityAccentColor = {
                       High: 'border-red-500',
@@ -1100,8 +1269,13 @@ export function RequirementsList({
                       return (
                         <Card
                           key={requirement.req_id}
-                          className={`h-full flex flex-col cursor-pointer transition-all duration-300 ${cardAccentClasses} hover:shadow-lg bg-gradient-to-br from-background to-muted/10`}
-                          onClick={() => onSelectRequirement(requirement)}
+                          className={`cursor-pointer bg-card hover:shadow-lg transition-all duration-200 h-full ${cardAccentClasses}`}
+                          onClick={(e) => {
+                            const target = e.target as HTMLElement;
+                            if (!target.closest('[role="menu"]') && !target.closest('button[aria-haspopup]')) {
+                              onSelectRequirement(requirement);
+                            }
+                          }}
                           tabIndex={0}
                           onKeyDown={(e) => {
                             if (e.key === 'Enter' || e.key === ' ') {
@@ -1112,65 +1286,34 @@ export function RequirementsList({
                           role="button"
                           aria-label={`Apri requisito: ${requirement.title}`}
                         >
-                          <CardHeader className="space-y-3 pb-4 flex flex-col flex-1">
-                            <div className="flex items-start justify-between gap-2">
-                              <div className="space-y-3 flex-1">
-                                <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
-                                  <Badge className={`${prioritySolidBadge} text-white text-[11px] font-semibold px-2 py-0.5 border-0`}>
-                                    {requirement.priority === 'High' ? 'Alta' : requirement.priority === 'Med' ? 'Media' : 'Bassa'}
-                                  </Badge>
-                                  <div className="flex items-center gap-1">
-                                    <Calendar className="h-3.5 w-3.5" />
-                                    <span>{new Date(requirement.created_on).toLocaleDateString('it-IT')}</span>
-                                  </div>
-                                </div>
-                                <CardTitle className="text-base leading-tight line-clamp-2">{requirement.title}</CardTitle>
-                                {requirement.description && (
-                                  <p className="text-sm text-muted-foreground line-clamp-3">
-                                    {requirement.description}
-                                  </p>
-                                )}
+                          <div className="flex flex-col h-full p-3">
+                            {/* Header: Badge e Menu */}
+                            <div className="flex items-center justify-between gap-2 mb-2">
+                              <div className="flex items-center gap-1.5">
+                                <Badge className={`${prioritySolidBadge} text-white text-[10px] font-semibold px-2 py-0.5 border-0`}>
+                                  {requirement.priority === 'High' ? 'Alta' : requirement.priority === 'Med' ? 'Media' : 'Bassa'}
+                                </Badge>
+                                <Badge className={`${stateSolidBadge} text-white text-[10px] font-semibold px-2 py-0.5 border-0`}>
+                                  {requirement.state === 'Proposed' ? 'Proposto' :
+                                    requirement.state === 'Selected' ? 'Selezionato' :
+                                      requirement.state === 'Scheduled' ? 'Pianificato' : 'Completato'}
+                                </Badge>
                               </div>
                               {renderRequirementActions(requirement)}
                             </div>
-                          </CardHeader>
-                          <CardContent className="pt-0 space-y-3">
-                            {renderEstimateHighlight(requirement)}
-                            <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                              <Badge className={`${stateSolidBadge} text-white text-[11px] font-semibold px-2 py-0.5 border-0`}>
-                                {requirement.state === 'Proposed' ? 'Proposto' :
-                                  requirement.state === 'Selected' ? 'Selezionato' :
-                                    requirement.state === 'Scheduled' ? 'Pianificato' : 'Completato'}
-                              </Badge>
-                              {requirement.business_owner && (
-                                <div className="flex items-center gap-1.5 rounded border px-2 py-0.5">
-                                  <User className="h-3 w-3" />
-                                  <span className="font-medium">{requirement.business_owner}</span>
-                                </div>
-                              )}
-                              {requirement.last_estimated_on && (
-                                <div className="flex items-center gap-1.5 rounded border px-2 py-0.5 border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-400">
-                                  <BarChart3 className="h-3 w-3" />
-                                  <span>Stimato {new Date(requirement.last_estimated_on).toLocaleDateString('it-IT')}</span>
-                                </div>
-                              )}
-                              {labels.length > 0 && (
-                                <div className="flex items-center gap-1 flex-wrap">
-                                  <Tag className="h-3 w-3 text-muted-foreground" />
-                                  {labels.slice(0, 2).map((label, index) => (
-                                    <Badge key={index} variant="outline" className="text-[11px] px-2 py-0.5">
-                                      {label}
-                                    </Badge>
-                                  ))}
-                                  {labels.length > 2 && (
-                                    <Badge variant="outline" className="text-[11px] px-2 py-0.5">
-                                      +{labels.length - 2}
-                                    </Badge>
-                                  )}
-                                </div>
-                              )}
+
+                            {/* Titolo grande e prominente - occupa spazio centrale */}
+                            <div className="flex-1 flex items-center justify-start mb-2">
+                              <h3 className="text-2xl font-bold text-foreground leading-none">
+                                {requirement.title}
+                              </h3>
                             </div>
-                          </CardContent>
+
+                            {/* Box Stima in fondo */}
+                            <div className="mt-auto">
+                              {renderEstimateHighlight(requirement, 'compact')}
+                            </div>
+                          </div>
                         </Card>
                       );
                     }
@@ -1178,8 +1321,14 @@ export function RequirementsList({
                     return (
                       <Card
                         key={requirement.req_id}
-                        className={`group cursor-pointer border bg-card/70 transition-all duration-150 ${cardAccentClasses} hover:border-primary/40 hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40`}
-                        onClick={() => onSelectRequirement(requirement)}
+                        className={`group cursor-pointer border bg-card/70 transition-all duration-150 ${cardAccentClasses} hover:border-primary/40 hover:bg-primary/5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40`}
+                        onClick={(e) => {
+                          // Verifica che il click non sia sul menu dropdown
+                          const target = e.target as HTMLElement;
+                          if (!target.closest('[role="menu"]') && !target.closest('button[aria-haspopup]')) {
+                            onSelectRequirement(requirement);
+                          }
+                        }}
                         tabIndex={0}
                         onKeyDown={(e) => {
                           if (e.key === 'Enter' || e.key === ' ') {
@@ -1267,19 +1416,21 @@ export function RequirementsList({
                     );
                   })}
                 </div>
-              )}
+              )
+              }
             </div>
           )}
         </TabsContent>
 
-      <TabsContent value="dashboard">
-        <DashboardView
-          list={list}
-          requirements={visibleRequirementEntities}
-          onBack={onBack}
-        />
-      </TabsContent>
-    </Tabs>
+        <TabsContent value="dashboard">
+          <DashboardView
+            list={list}
+            requirements={visibleRequirementEntities}
+            onBack={onBack}
+            onSelectRequirement={onSelectRequirement}
+          />
+        </TabsContent>
+      </Tabs>
 
       <AlertDialog open={deleteDialogOpen} onOpenChange={handleDeleteDialogChange}>
         <AlertDialogContent>
@@ -1293,7 +1444,7 @@ export function RequirementsList({
                     {requirementPendingDeletion.title}
                   </span>{' '}
                   (ID <span className="font-mono">{requirementPendingDeletion.req_id}</span>) e tutte le sue stime verranno eliminati.
-                  L&#39;operazione è irreversibile.
+                  L&#39;operazione Ã¨ irreversibile.
                 </>
               ) : (
                 'Seleziona un requisito da eliminare.'
@@ -1314,6 +1465,14 @@ export function RequirementsList({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </div >
   );
 }
+
+
+
+
+
+
+
+

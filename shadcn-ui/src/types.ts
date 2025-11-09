@@ -11,6 +11,7 @@ export interface List {
   owner?: string;
   period?: string;
   notes?: string;
+  technology?: string;
   // Default fields for requirements (cascade defaults)
   default_priority?: 'High' | 'Med' | 'Low';
   default_business_owner?: string;
@@ -101,8 +102,10 @@ export interface Driver {
 export interface Risk {
   risk_id: string;
   risk_item: string;
+  category: 'Technical' | 'Business' | 'Governance' | 'Integration';
   weight: number;
   guidance: string;
+  mitigation: string;
 }
 
 export interface ContingencyBand {
@@ -172,6 +175,7 @@ export interface DashboardFilters {
   priorities: ('High' | 'Med' | 'Low')[];
   tags: string[];
   startDate: string;
+  targetDate?: string; // Data obiettivo opzionale per calcolo velocity
   nDevelopers: number;
   excludeWeekends: boolean;
   holidays: string[];

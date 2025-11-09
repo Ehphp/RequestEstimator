@@ -65,7 +65,8 @@ export function getListDefaults(currentUser: string): Partial<List> {
     period: getCurrentQuarter(),
     owner: currentUser,
     status: 'Active',
-    notes: ''
+    notes: '',
+    technology: 'Power Platform'
   };
 }
 

@@ -305,6 +305,150 @@ export function calculateDashboardKPIs(reqsWithEstimates: RequirementWithEstimat
   };
 }
 
+/**
+ * Calcola il Confidence Score (0-100) della dashboard basato su:
+ * - Completezza stime (40 punti max)
+ * - Consistenza stime (30 punti max)
+ * - Volume dati (20 punti max)
+ * - Categorizzazione (10 punti max)
+ */
+export function calculateConfidenceScore(kpis: DashboardKPI, totalReqs: number): {
+  score: number;
+  level: 'low' | 'medium' | 'high';
+  breakdown: {
+    completeness: number;
+    consistency: number;
+    volume: number;
+    categorization: number;
+  };
+} {
+  // 1. Completezza: % requisiti stimati (max 40 punti)
+  const estimatedCount = kpis.priorityMix.High + kpis.priorityMix.Med + kpis.priorityMix.Low;
+  const completeness = totalReqs > 0 ? (estimatedCount / totalReqs) * 40 : 0;
+
+  // 2. Consistenza: quanto sono uniformi le stime (max 30 punti)
+  // Più p80 è vicino alla media, più sono consistenti
+  const consistency = kpis.avgDays > 0
+    ? Math.max(0, (1 - Math.abs(kpis.p80Days - kpis.avgDays) / kpis.p80Days) * 30)
+    : 0;
+
+  // 3. Volume dati: più requisiti = più affidabile (max 20 punti)
+  const volume = Math.min(20, (totalReqs / 5) * 20); // 5+ requisiti = 20 punti
+
+  // 4. Categorizzazione: presenza di tag (max 10 punti)
+  const categorization = kpis.topTagByEffort ? 10 : 0;
+
+  const score = Math.round(completeness + consistency + volume + categorization);
+
+  let level: 'low' | 'medium' | 'high';
+  if (score >= 80) level = 'high';
+  else if (score >= 50) level = 'medium';
+  else level = 'low';
+
+  return {
+    score,
+    level,
+    breakdown: {
+      completeness: Math.round(completeness),
+      consistency: Math.round(consistency),
+      volume: Math.round(volume),
+      categorization: Math.round(categorization)
+    }
+  };
+}
+
+/**
+ * Identifica deviation alerts basati su soglie critiche dei KPI
+ */
+export function calculateDeviationAlerts(
+  kpis: DashboardKPI,
+  totalWorkdays: number,
+  totalDays: number
+): Array<{
+  type: 'warning' | 'info' | 'critical';
+  icon: string;
+  message: string;
+  tooltip: string;
+}> {
+  const alerts: Array<{
+    type: 'warning' | 'info' | 'critical';
+    icon: string;
+    message: string;
+    tooltip: string;
+  }> = [];
+
+  // Alert 1: Requisiti medi complessi
+  if (kpis.avgDays > 10) {
+    alerts.push({
+      type: 'warning',
+      icon: '⚠️',
+      message: 'Req medi complessi',
+      tooltip: `Media ${kpis.avgDays}gg/req - considerare breakdown in task più piccoli`
+    });
+  }
+
+  // Alert 2: Alta varianza nelle stime
+  if (kpis.p80Days > kpis.avgDays * 2) {
+    alerts.push({
+      type: 'info',
+      icon: '📊',
+      message: 'Alta varianza stime',
+      tooltip: `P80 (${kpis.p80Days}gg) è ${Math.round((kpis.p80Days / kpis.avgDays - 1) * 100)}% sopra la media - alcune stime molto più alte`
+    });
+  }
+
+  // Alert 3: Concentrazione su High priority
+  if (kpis.effortByPriorityPct.High > 60) {
+    alerts.push({
+      type: 'critical',
+      icon: '🔴',
+      message: 'Concentrazione High',
+      tooltip: `${kpis.effortByPriorityPct.High}% effort su priorità High - rischio bottleneck`
+    });
+  }
+
+  // Alert 4: Progetto high-complexity
+  const totalDifficulty = kpis.difficultyMix.low + kpis.difficultyMix.medium + kpis.difficultyMix.high;
+  const highPct = totalDifficulty > 0 ? (kpis.difficultyMix.high / totalDifficulty) * 100 : 0;
+  if (highPct > 50) {
+    alerts.push({
+      type: 'warning',
+      icon: '🏔️',
+      message: 'High-complexity',
+      tooltip: `${Math.round(highPct)}% requisiti ad alta difficoltà - allocare senior developers`
+    });
+  }
+
+  // Alert 5: Timeline stretched
+  if (totalWorkdays > totalDays * 1.5) {
+    alerts.push({
+      type: 'info',
+      icon: '⏱️',
+      message: 'Timeline stretched',
+      tooltip: `${totalWorkdays} giorni lavorativi per ${totalDays} gg/uomo - considerare più risorse`
+    });
+  }
+
+  // Alert 6: Progetto grande
+  if (kpis.totalDays > 200) {
+    alerts.push({
+      type: 'critical',
+      icon: '🚀',
+      message: 'Progetto XL',
+      tooltip: `${kpis.totalDays} gg/uomo - considerare milestone e deliverable incrementali`
+    });
+  } else if (kpis.totalDays > 100) {
+    alerts.push({
+      type: 'warning',
+      icon: '📦',
+      message: 'Progetto Large',
+      tooltip: `${kpis.totalDays} gg/uomo - monitorare progress settimanalmente`
+    });
+  }
+
+  return alerts.slice(0, 4); // Mostra max 4 alert per non sovraccaricare UI
+}
+
 // ============================================================================
 // CALENDAR FUNCTIONS
 // ============================================================================

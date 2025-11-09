@@ -1,10 +1,15 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { supabase } from '@/lib/supabase';
 import { logger } from '@/lib/logger';
+import type { User } from '@supabase/supabase-js';
 
 interface AuthContextType {
-    currentUser: string;
+    currentUser: string | null;
+    user: User | null;
     setCurrentUser: (user: string) => void;
     isAuthenticated: boolean;
+    loading: boolean;
+    signOut: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -14,10 +19,14 @@ interface AuthProviderProps {
 }
 
 /**
- * Provider per il contesto di autenticazione.
+ * Provider per il contesto di autenticazione con Supabase Auth.
  * 
- * NOTA: Questa è un'implementazione base che usa localStorage.
- * In produzione, integrare con Supabase Auth o altro provider OAuth.
+ * Gestisce:
+ * - Autenticazione utente con Supabase
+ * - Sessioni persistenti
+ * - Stati di loading
+ * - Sign out
+ * - Fallback a localStorage per development
  * 
  * @example
  * ```tsx
@@ -27,36 +36,113 @@ interface AuthProviderProps {
  * ```
  */
 export function AuthProvider({ children }: AuthProviderProps) {
-    // Default user - in produzione recuperare da Supabase Auth
-    const [currentUser, setCurrentUserState] = useState<string>('current.user@example.com');
-    const [isAuthenticated] = useState<boolean>(true);
+    const [currentUser, setCurrentUserState] = useState<string | null>(null);
+    const [user, setUser] = useState<User | null>(null);
+    const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+    const [loading, setLoading] = useState<boolean>(true);
 
     useEffect(() => {
-        // Check localStorage per user salvato
+        // Inizializza auth e ascolta cambiamenti
+        initAuth();
+
+        // Setup listener per cambiamenti auth
+        const { data: { subscription } } = supabase.auth.onAuthStateChange(
+            (_event, session) => {
+                if (session?.user) {
+                    setUser(session.user);
+                    setCurrentUserState(session.user.email || null);
+                    setIsAuthenticated(true);
+                    logger.log('Auth state changed: User authenticated', session.user.email);
+                } else {
+                    setUser(null);
+                    setCurrentUserState(null);
+                    setIsAuthenticated(false);
+                    logger.log('Auth state changed: User signed out');
+                }
+                setLoading(false);
+            }
+        );
+
+        return () => {
+            subscription.unsubscribe();
+        };
+    }, []);
+
+    const initAuth = async () => {
+        try {
+            // Tenta di ottenere sessione Supabase
+            const { data: { session }, error } = await supabase.auth.getSession();
+
+            if (error) {
+                logger.error('Error getting session:', error);
+                // Fallback a localStorage per dev
+                setupFallbackAuth();
+                return;
+            }
+
+            if (session?.user) {
+                setUser(session.user);
+                setCurrentUserState(session.user.email || null);
+                setIsAuthenticated(true);
+                logger.log('Session restored:', session.user.email);
+            } else {
+                // Nessuna sessione valida - usa fallback per dev
+                setupFallbackAuth();
+            }
+        } catch (error) {
+            logger.error('Error initializing auth:', error);
+            setupFallbackAuth();
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const setupFallbackAuth = () => {
+        // Fallback a localStorage per ambiente dev
         const savedUser = localStorage.getItem('current_user');
         if (savedUser) {
             setCurrentUserState(savedUser);
-            logger.log('User loaded from localStorage:', savedUser);
+            setIsAuthenticated(true);
+            logger.log('Using fallback auth with localStorage:', savedUser);
+        } else {
+            // Default dev user
+            const devUser = 'current.user@example.com';
+            setCurrentUserState(devUser);
+            setIsAuthenticated(true);
+            localStorage.setItem('current_user', devUser);
+            logger.log('Using default dev user:', devUser);
         }
+    };
 
-        // TODO: Integrare con Supabase Auth
-        // const { data: { user } } = await supabase.auth.getUser();
-        // if (user) {
-        //   setCurrentUserState(user.email || 'unknown');
-        //   setIsAuthenticated(true);
-        // }
-    }, []);
+    const setCurrentUser = (userEmail: string) => {
+        setCurrentUserState(userEmail);
+        localStorage.setItem('current_user', userEmail);
+        logger.log('Current user updated:', userEmail);
+    };
 
-    const setCurrentUser = (user: string) => {
-        setCurrentUserState(user);
-        localStorage.setItem('current_user', user);
-        logger.log('Current user updated:', user);
+    const signOut = async () => {
+        try {
+            const { error } = await supabase.auth.signOut();
+            if (error) throw error;
+
+            setUser(null);
+            setCurrentUserState(null);
+            setIsAuthenticated(false);
+            localStorage.removeItem('current_user');
+            logger.log('User signed out successfully');
+        } catch (error) {
+            logger.error('Error signing out:', error);
+            throw error;
+        }
     };
 
     const value: AuthContextType = {
         currentUser,
+        user,
         setCurrentUser,
         isAuthenticated,
+        loading,
+        signOut,
     };
 
     return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
@@ -65,14 +151,29 @@ export function AuthProvider({ children }: AuthProviderProps) {
 /**
  * Hook per accedere al contesto di autenticazione.
  * 
+ * Fornisce accesso a:
+ * - currentUser: email dell'utente corrente
+ * - user: oggetto User completo da Supabase
+ * - isAuthenticated: stato autenticazione
+ * - loading: stato caricamento iniziale
+ * - signOut: funzione per logout
+ * 
  * @throws Se usato fuori da AuthProvider
  * @returns Contesto di autenticazione
  * 
  * @example
  * ```tsx
  * function MyComponent() {
- *   const { currentUser } = useAuth();
- *   return <div>Welcome {currentUser}</div>;
+ *   const { currentUser, loading, signOut } = useAuth();
+ *   
+ *   if (loading) return <Loader />;
+ *   
+ *   return (
+ *     <div>
+ *       Welcome {currentUser}
+ *       <button onClick={signOut}>Logout</button>
+ *     </div>
+ *   );
  * }
  * ```
  */

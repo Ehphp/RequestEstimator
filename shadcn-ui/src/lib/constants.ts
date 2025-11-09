@@ -105,7 +105,7 @@ export const PRECISION = {
 export const CATALOG_VERSIONS = {
     ACTIVITIES: 'v1.0',
     DRIVERS: 'v1.0',
-    RISKS: 'v1.0',
+    RISKS: 'v2.0', // Updated: Power Platform specific risks with categories
 } as const;
 
 /**

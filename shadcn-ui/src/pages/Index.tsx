@@ -1,9 +1,14 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
-import { Plus, FileText, Calendar, User, AlertCircle, Loader2, Trash2 } from 'lucide-react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { Plus, FileText, AlertCircle, Loader2, SlidersHorizontal } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -16,7 +21,8 @@ import {
 } from '@/components/ui/alert-dialog';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { useSearchParams } from 'react-router-dom';
-import { ListOverviewCard } from '@/components/lists/ListOverviewCard';
+import { EmptyListsSidebar } from '@/components/EmptyListsSidebar';
+import { DefaultPill } from '@/components/DefaultPill';
 import { List, Requirement } from '../types';
 import {
   getLists,
@@ -26,18 +32,21 @@ import {
   deleteList,
 } from '../lib/storage';
 import { logger } from '@/lib/logger';
+import { getListDefaults } from '../lib/defaults';
+import { presets } from '@/data/presets';
 import { RequirementsList } from '../components/RequirementsList';
-import { EstimateEditor } from '../components/EstimateEditor';
-import { generateTreemapLayout, TreemapNode, getCardSizeVariant } from '@/lib/treemap';
+import { RequirementDetailView } from '../components/RequirementDetailView';
+import { TreemapApex, TECHNOLOGY_FALLBACK_LABEL } from '../components/TreemapApex';
+import { getTechnologyColor } from '../lib/technology-colors';
 import { getLatestEstimates } from '@/lib/storage';
 
 export default function Index() {
-  console.log('🔵 Index component rendered - TREEMAP VERSION');
+  logger.debug('🔵 Index component rendered - TREEMAP VERSION');
 
   const [lists, setLists] = useState<List[]>([]);
-  const [treemapLayout, setTreemapLayout] = useState<TreemapNode[]>([]);
   const [listStats, setListStats] = useState<Record<string, { totalRequirements: number; totalDays: number }>>({});
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
+  const [remeasureTrigger, setRemeasureTrigger] = useState(0); // Trigger for forced remeasurement
   const containerRef = useRef<HTMLDivElement>(null);
   const latestListIdRef = useRef<string | null>(null);
   const [selectedList, setSelectedList] = useState<List | null>(null);
@@ -53,10 +62,114 @@ export default function Index() {
   const [searchParams, setSearchParams] = useSearchParams();
   const listIdParam = searchParams.get('listId');
   const reqIdParam = searchParams.get('reqId');
+  const currentUser = 'current.user@example.com'; // TODO: wire to auth
 
-  console.log('🔵 Index State:', {
+  const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [isSavingList, setIsSavingList] = useState(false);
+  const [formData, setFormData] = useState<{
+    name: string;
+    owner: string;
+    period: string;
+    notes: string;
+    technology: string;
+    status: List['status'];
+    preset_key: string;
+    default_priority?: 'High' | 'Med' | 'Low';
+    default_business_owner?: string;
+    default_labels?: string;
+    default_description?: string;
+  }>(() => {
+    const defaults = getListDefaults(currentUser);
+    return {
+      name: '',
+      owner: defaults.owner ?? '',
+      period: defaults.period ?? '',
+      notes: defaults.notes ?? '',
+      technology: defaults.technology ?? 'Power Platform',
+      status: (defaults.status as List['status']) ?? 'Active',
+      preset_key: 'none',
+      default_priority: undefined,
+      default_business_owner: undefined,
+      default_labels: undefined,
+      default_description: undefined
+    };
+  });
+  const [defaultSources, setDefaultSources] = useState<Record<string, string>>({
+    owner: 'Current User',
+    period: 'Current Quarter',
+    status: 'Default'
+  });
+  const [overriddenFields, setOverriddenFields] = useState<Record<string, boolean>>({});
+  const [showAutoFields, setShowAutoFields] = useState(false);
+  const resetForm = useCallback(() => {
+    const defaults = getListDefaults(currentUser);
+    setFormData({
+      name: '',
+      owner: defaults.owner ?? '',
+      period: defaults.period ?? '',
+      notes: defaults.notes ?? '',
+      technology: defaults.technology ?? 'Power Platform',
+      status: (defaults.status as List['status']) ?? 'Active',
+      preset_key: 'none',
+      default_priority: undefined,
+      default_business_owner: undefined,
+      default_labels: undefined,
+      default_description: undefined
+    });
+    setDefaultSources({
+      owner: 'Current User',
+      period: 'Current Quarter',
+      status: 'Default'
+    });
+    setOverriddenFields({});
+  }, [currentUser]);
+
+  const technologyLegend = useMemo(() => {
+    const seen = new Set<string>();
+    const legend: Array<{ label: string; color: string }> = [];
+
+    lists.forEach((list) => {
+      const stats = listStats[list.list_id];
+      if (!stats || stats.totalRequirements === 0 || stats.totalDays === 0) {
+        return;
+      }
+
+      const tech = (list.technology?.trim() || TECHNOLOGY_FALLBACK_LABEL);
+      if (seen.has(tech)) {
+        return;
+      }
+      seen.add(tech);
+      legend.push({
+        label: tech,
+        color: getTechnologyColor(tech)
+      });
+    });
+
+    return legend;
+  }, [lists, listStats]);
+
+  const handleToggleOverride = (field: 'owner' | 'period' | 'status') => {
+    setOverriddenFields(prev => ({
+      ...prev,
+      [field]: !prev[field]
+    }));
+
+    if (!overriddenFields[field]) {
+      return;
+    }
+
+    const defaults = getListDefaults(currentUser);
+    if (field === 'owner') {
+      setFormData(prev => ({ ...prev, owner: defaults.owner ?? '' }));
+    } else if (field === 'period') {
+      setFormData(prev => ({ ...prev, period: defaults.period ?? '' }));
+    } else if (field === 'status') {
+      setFormData(prev => ({ ...prev, status: (defaults.status as List['status']) ?? 'Active' }));
+    }
+  };
+
+  logger.debug('🔵 Index State:', {
     listsCount: lists.length,
-    treemapLayoutCount: treemapLayout.length,
     containerSize,
     selectedList: selectedList?.name
   });
@@ -124,7 +237,7 @@ export default function Index() {
           statsMap[listId] = stats;
         });
         setListStats(statsMap);
-        console.log('📊 Stats loaded:', statsMap);
+        logger.debug('📊 Stats loaded:', statsMap);
       }
 
       if (autoSelectFirst && listsData.length > 0 && !selectedList) {
@@ -171,45 +284,33 @@ export default function Index() {
     }
   }, [selectedList]);
 
-  // Calculate treemap layout
-  useEffect(() => {
-    console.log('🟢 TREEMAP EFFECT', { listsLength: lists.length, containerWidth: containerSize.width });
-
-    if (lists.length === 0 || containerSize.width === 0 || selectedList) {
-      setTreemapLayout([]);
-      return;
-    }
-
-    const treemapItems = lists.map(list => ({
-      id: list.list_id,
-      value: Math.max(listStats[list.list_id]?.totalRequirements || 1, 1),
-      data: list
-    }));
-
-    console.log('📊 Treemap items:', treemapItems);
-
-    const layout = generateTreemapLayout(
-      treemapItems,
-      containerSize.width,
-      containerSize.height,
-      {
-        padding: 12,
-        minSize: 150,
-        maxAspectRatio: 3,
-        enableDynamicHeight: true
-      }
-    );
-
-    console.log('✅ Treemap layout:', layout.map(l => ({ id: l.id, w: l.width.toFixed(0), h: l.height.toFixed(0) })));
-    setTreemapLayout(layout);
-  }, [lists, listStats, containerSize, selectedList]);
-
-  // Measure container size with throttling
+  // Measure container size with throttling and exponential backoff retry
   useEffect(() => {
     if (selectedList) return; // Only measure when showing lists
 
     let rafId: number | null = null;
     let timeoutId: NodeJS.Timeout | null = null;
+    let retryTimeoutId: NodeJS.Timeout | null = null;
+    let retryAttempt = 0;
+    const MAX_RETRIES = 5;
+    const retryDelays = [100, 150, 225, 337, 506]; // Exponential backoff
+
+    const scheduleRetry = () => {
+      if (retryAttempt < MAX_RETRIES) {
+        const delay = retryDelays[retryAttempt];
+        logger.debug(`🔄 Retry ${retryAttempt + 1}/${MAX_RETRIES} in ${delay}ms...`);
+        retryTimeoutId = setTimeout(() => {
+          retryAttempt++;
+          updateSize();
+        }, delay);
+      } else {
+        // Last resort: use window width
+        const fallbackWidth = Math.max(window.innerWidth - 64, 800); // Subtract padding, min 800
+        const fallbackHeight = Math.max(window.innerHeight - 200, 600);
+        logger.warn('⚠️ Max retries reached, using fallback dimensions:', fallbackWidth, fallbackHeight);
+        setContainerSize({ width: fallbackWidth, height: fallbackHeight });
+      }
+    };
 
     const updateSize = () => {
       if (rafId !== null) {
@@ -217,15 +318,38 @@ export default function Index() {
       }
 
       rafId = requestAnimationFrame(() => {
-        if (containerRef.current) {
-          const parent = containerRef.current.parentElement;
-          const rect = containerRef.current.getBoundingClientRect();
-          const width = rect.width > 0 ? rect.width : (parent?.getBoundingClientRect().width || 1200);
-          const availableHeight = Math.max(window.innerHeight - 250, 600);
-
-          setContainerSize({ width, height: availableHeight });
-          console.log('📐 Container size updated:', width, availableHeight);
+        if (!containerRef.current) {
+          logger.warn('⚠️ containerRef.current is null');
+          scheduleRetry();
+          rafId = null;
+          return;
         }
+
+        const parent = containerRef.current.parentElement;
+        const rect = containerRef.current.getBoundingClientRect();
+        const width = rect.width > 0 ? rect.width : (parent?.getBoundingClientRect().width || 0);
+
+        logger.debug('📐 Measuring container:', {
+          rectWidth: rect.width,
+          parentWidth: parent?.getBoundingClientRect().width,
+          finalWidth: width,
+          retryAttempt
+        });
+
+        // Calculate available viewport height (from top of container to bottom of viewport - footer space)
+        const containerTop = rect.top || 0;
+        const viewportHeight = window.innerHeight;
+        const footerSpace = 32; // Bottom padding
+        const availableHeight = Math.max(viewportHeight - containerTop - footerSpace, 500);
+
+        if (width > 0) {
+          setContainerSize({ width, height: availableHeight });
+          logger.debug('✅ Container size updated:', width, availableHeight);
+        } else {
+          logger.warn('⚠️ Container width is still 0, scheduling retry...');
+          scheduleRetry();
+        }
+
         rafId = null;
       });
     };
@@ -235,19 +359,15 @@ export default function Index() {
       if (timeoutId !== null) {
         clearTimeout(timeoutId);
       }
-      timeoutId = setTimeout(updateSize, 100);
+      timeoutId = setTimeout(() => {
+        retryAttempt = 0; // Reset retry counter on manual resize
+        updateSize();
+      }, 100);
     };
 
-    // Initial measurement with retry
+    // Initial measurement
+    logger.debug('🎬 Starting initial measurement...');
     updateSize();
-
-    // Retry after a short delay if width is still 0
-    const retryTimer = setTimeout(() => {
-      if (containerSize.width === 0) {
-        console.log('🔄 Retrying container measurement...');
-        updateSize();
-      }
-    }, 200);
 
     window.addEventListener('resize', handleResize);
 
@@ -255,23 +375,19 @@ export default function Index() {
       window.removeEventListener('resize', handleResize);
       if (rafId !== null) cancelAnimationFrame(rafId);
       if (timeoutId !== null) clearTimeout(timeoutId);
-      clearTimeout(retryTimer);
+      if (retryTimeoutId !== null) clearTimeout(retryTimeoutId);
     };
-  }, [selectedList, containerSize.width]);
+  }, [selectedList, remeasureTrigger]);
 
+  // Trigger remeasurement when lists change
   useEffect(() => {
-    if (selectedList) return;
-    const timer = setTimeout(() => {
-      if (containerRef.current) {
-        const parent = containerRef.current.parentElement;
-        const rect = containerRef.current.getBoundingClientRect();
-        const width = rect.width > 0 ? rect.width : (parent?.getBoundingClientRect().width || 1200);
-        const availableHeight = Math.max(window.innerHeight - 250, 600);
-        setContainerSize({ width, height: availableHeight });
-        console.log('📐 Re-measure after lists:', width, availableHeight);
-      }
-    }, 100);
-    return () => clearTimeout(timer);
+    if (!selectedList && lists.length > 0) {
+      // Delay to allow DOM to update
+      const timer = setTimeout(() => {
+        setRemeasureTrigger(prev => prev + 1);
+      }, 50);
+      return () => clearTimeout(timer);
+    }
   }, [lists.length, selectedList]);
 
   useEffect(() => {
@@ -299,29 +415,48 @@ export default function Index() {
     }
   }, [reqIdParam, requirements, selectedRequirement, updateSearchParams]);
 
-  const handleCreateNewList = async () => {
-    try {
-      const newList: List = {
-        list_id: generateId('LIST'),
-        name: 'Nuova Lista',
-        description: 'Descrizione della nuova lista',
-        preset_key: undefined,
-        created_on: new Date().toISOString(),
-        created_by: 'current.user@example.com',
-        status: 'Active'
-      };
+  const handleCreateNewList = () => {
+    resetForm();
+    setShowCreateDialog(true);
+  };
 
-      await saveList(newList);
-      await loadLists();
-      setSelectedList(newList);
+  const handleSubmitNewList = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const listToSave: List = {
+      list_id: generateId('LIST'),
+      name: formData.name.trim(),
+      owner: formData.owner,
+      period: formData.period,
+      notes: formData.notes,
+      technology: formData.technology.trim(),
+      status: formData.status,
+      preset_key: formData.preset_key === 'none' ? undefined : (formData.preset_key as List['preset_key']),
+      default_priority: formData.default_priority,
+      default_business_owner: formData.default_business_owner,
+      default_labels: formData.default_labels,
+      default_description: formData.default_description,
+      created_on: new Date().toISOString(),
+      created_by: currentUser
+    };
+
+    try {
+      setIsSavingList(true);
+      await saveList(listToSave);
+      const updatedLists = await loadLists();
+      const savedList = updatedLists.find(list => list.list_id === listToSave.list_id) ?? listToSave;
+      setSelectedList(savedList);
       updateSearchParams((params) => {
-        params.set('listId', newList.list_id);
+        params.set('listId', savedList.list_id);
         params.delete('reqId');
         params.delete('tab');
       });
+      setShowCreateDialog(false);
+      resetForm();
     } catch (err) {
       logger.error('Error creating new list:', err);
       setError('Errore nella creazione della nuova lista.');
+    } finally {
+      setIsSavingList(false);
     }
   };
 
@@ -336,6 +471,10 @@ export default function Index() {
   };
 
   const handleSelectRequirement = (requirement: Requirement) => {
+    logger.info('📍 Navigating to requirement estimate:', {
+      req_id: requirement.req_id,
+      title: requirement.title
+    });
     setSelectedRequirement(requirement);
     updateSearchParams((params) => {
       params.set('reqId', requirement.req_id);
@@ -351,6 +490,11 @@ export default function Index() {
     if (selectedList) {
       loadRequirements(selectedList.list_id);
     }
+  };
+
+  const handleListUpdated = (updatedList: List) => {
+    setLists((prev) => prev.map((list) => (list.list_id === updatedList.list_id ? updatedList : list)));
+    setSelectedList(updatedList);
   };
 
   const handleBackToLists = () => {
@@ -428,13 +572,11 @@ export default function Index() {
 
   if (selectedRequirement && selectedList) {
     return (
-      <div className="min-h-screen bg-gray-50 dark:bg-black p-6">
-        <EstimateEditor
-          requirement={selectedRequirement}
-          list={selectedList}
-          onBack={handleBackToRequirements}
-        />
-      </div>
+      <RequirementDetailView
+        requirement={selectedRequirement}
+        list={selectedList}
+        onBack={handleBackToRequirements}
+      />
     );
   }
 
@@ -447,6 +589,7 @@ export default function Index() {
           onBack={handleBackToLists}
           onSelectRequirement={handleSelectRequirement}
           onRequirementsChange={() => loadRequirements(selectedList.list_id)}
+          onListUpdated={handleListUpdated}
         />
       </div>
     );
@@ -473,6 +616,286 @@ export default function Index() {
           </div>
         </div>
 
+        <Dialog
+          open={showCreateDialog}
+          onOpenChange={(open) => {
+            setShowCreateDialog(open);
+            if (!open) {
+              resetForm();
+            }
+          }}
+        >
+          <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Crea Nuova Lista</DialogTitle>
+              <DialogDescription>
+                Compila i campi principali, puoi perfezionare i dettagli in un secondo momento.
+              </DialogDescription>
+            </DialogHeader>
+            <form onSubmit={handleSubmitNewList} className="space-y-6">
+              <section className="space-y-4">
+                <div className="space-y-1.5">
+                  <Label htmlFor="list-name">Nome Lista</Label>
+                  <Input
+                    id="list-name"
+                    value={formData.name}
+                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                    placeholder="es. HR - Notifiche Q4"
+                    required
+                    className="h-10 sm:h-9"
+                  />
+                  <p className="text-xs text-muted-foreground">Nome leggibile dal business e dalle dashboard.</p>
+                </div>
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="list-preset">Preset (opzionale)</Label>
+                    <Select
+                      value={formData.preset_key}
+                      onValueChange={(value) => setFormData({ ...formData, preset_key: value })}
+                    >
+                      <SelectTrigger className="h-10 sm:h-9">
+                        <SelectValue placeholder="Suggerimenti automatici" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">Nessun preset</SelectItem>
+                        {presets.map((preset) => (
+                          <SelectItem key={preset.preset_key} value={preset.preset_key}>
+                            {preset.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {formData.preset_key !== 'none' && (
+                      <p className="text-[11px] text-muted-foreground">
+                        {presets.find((p) => p.preset_key === formData.preset_key)?.description_template}
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label htmlFor="list-technology">Tecnologia</Label>
+                    <Input
+                      id="list-technology"
+                      value={formData.technology}
+                      onChange={(e) => setFormData({ ...formData, technology: e.target.value })}
+                      placeholder="es. Power Platform - Canvas Apps"
+                      required
+                      className="h-10 sm:h-9"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Indica la piattaforma o lo stack principale usato dalla lista.
+                    </p>
+                  </div>
+
+                  <div className="sm:col-span-2 space-y-1.5">
+                    <Label htmlFor="list-notes">Note</Label>
+                    <Textarea
+                      id="list-notes"
+                      value={formData.notes}
+                      onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                      placeholder="Note sintetiche per chi usera la lista"
+                      rows={3}
+                      className="text-sm min-h-[88px]"
+                    />
+                    <p className="text-xs text-muted-foreground">Visibili solo all'interno della scheda lista.</p>
+                  </div>
+                </div>
+              </section>
+
+              <div className="rounded-lg border border-dashed bg-muted/20 p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                  <div className="flex flex-col leading-tight">
+                    <span className="font-medium text-muted-foreground">Campi auto-compilati</span>
+                    <span>Owner, periodo e status derivano dal profilo.</span>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 px-2 text-xs"
+                    onClick={() => setShowAutoFields((prev) => !prev)}
+                  >
+                    <SlidersHorizontal className="mr-2 h-3.5 w-3.5" />
+                    {showAutoFields ? 'Nascondi' : 'Modifica'}
+                  </Button>
+                </div>
+                {showAutoFields && (
+                  <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <Label htmlFor="list-owner">Owner</Label>
+                        {defaultSources.owner && (
+                          <DefaultPill
+                            source={defaultSources.owner}
+                            isOverridden={overriddenFields.owner || false}
+                            onToggleOverride={() => handleToggleOverride('owner')}
+                          />
+                        )}
+                      </div>
+                      <Input
+                        id="list-owner"
+                        value={formData.owner}
+                        onChange={(e) => setFormData({ ...formData, owner: e.target.value })}
+                        placeholder="Nome referente"
+                        required
+                        className="h-10 sm:h-9"
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <Label htmlFor="list-period">Periodo</Label>
+                        {defaultSources.period && (
+                          <DefaultPill
+                            source={defaultSources.period}
+                            isOverridden={overriddenFields.period || false}
+                            onToggleOverride={() => handleToggleOverride('period')}
+                          />
+                        )}
+                      </div>
+                      <Input
+                        id="list-period"
+                        value={formData.period}
+                        onChange={(e) => setFormData({ ...formData, period: e.target.value })}
+                        placeholder="es. Q4 2024"
+                        required
+                        className="h-10 sm:h-9"
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <Label htmlFor="list-status">Status</Label>
+                        {defaultSources.status && (
+                          <DefaultPill
+                            source={defaultSources.status}
+                            isOverridden={overriddenFields.status || false}
+                            onToggleOverride={() => handleToggleOverride('status')}
+                          />
+                        )}
+                      </div>
+                      <Select
+                        value={formData.status}
+                        onValueChange={(value: List['status']) => setFormData({ ...formData, status: value })}
+                      >
+                        <SelectTrigger className="h-10 sm:h-9">
+                          <SelectValue placeholder="Stato della lista" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Draft">Draft</SelectItem>
+                          <SelectItem value="Active">Active</SelectItem>
+                          <SelectItem value="Archived">Archived</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <p className="text-[11px] text-muted-foreground">
+                        Solo le liste attive alimentano la treemap home.
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <section className="rounded-xl border bg-background/80 p-4 space-y-4">
+                <div>
+                  <p className="text-sm font-semibold">Valori ereditati dai requisiti</p>
+                  <p className="text-xs text-muted-foreground">
+                    Impostali se vuoi propagare business owner, labels o descrizioni sui nuovi requisiti (la priorita resta per-singolo requisito).
+                  </p>
+                </div>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="default-business-owner" className="text-xs">
+                      Business owner default
+                    </Label>
+                    <Input
+                      id="default-business-owner"
+                      value={formData.default_business_owner || ''}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          default_business_owner: e.target.value || undefined
+                        })
+                      }
+                      placeholder="Lascia vuoto per usare l'owner della lista"
+                      className="h-9"
+                    />
+                    <p className="text-[11px] text-muted-foreground">
+                      Se vuoto, verra usato l'owner della lista ({formData.owner || 'non impostato'}).
+                    </p>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label htmlFor="default-labels" className="text-xs">
+                      Labels default
+                    </Label>
+                    <Input
+                      id="default-labels"
+                      value={formData.default_labels || ''}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          default_labels: e.target.value || undefined
+                        })
+                      }
+                      placeholder="es. HR,Notifiche,Critical"
+                      className="h-9"
+                    />
+                    <p className="text-[11px] text-muted-foreground">
+                      Se vuoto, le etichette verranno inferite dal titolo del requisito.
+                    </p>
+                  </div>
+
+                  <div className="space-y-1.5 sm:col-span-2">
+                    <Label htmlFor="default-description" className="text-xs">
+                      Template descrizione
+                    </Label>
+                    <Textarea
+                      id="default-description"
+                      value={formData.default_description || ''}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          default_description: e.target.value || undefined
+                        })
+                      }
+                      placeholder="Template base per descrizioni"
+                      rows={2}
+                      className="text-sm"
+                    />
+                    <p className="text-[11px] text-muted-foreground">
+                      Se vuoto e il preset selezionato lo prevede, verra usato il template del preset.
+                    </p>
+                  </div>
+                </div>
+              </section>
+
+              <div className="flex flex-col gap-3 border-t pt-4 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-xs text-muted-foreground">
+                  Potrai aggiornare questi dati in seguito dalla scheda lista.
+                </p>
+                <div className="flex flex-col gap-2 w-full sm:w-auto sm:flex-row">
+                  <Button type="submit" className="w-full sm:w-auto min-w-[150px]" disabled={isSavingList}>
+                    {isSavingList && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                    Crea Lista
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full sm:w-auto"
+                    onClick={() => {
+                      resetForm();
+                      setShowCreateDialog(false);
+                    }}
+                  >
+                    Annulla
+                  </Button>
+                </div>
+              </div>
+            </form>
+          </DialogContent>
+        </Dialog>
+
         {error && (
           <Alert variant="destructive" className="mb-6">
             <AlertCircle className="h-4 w-4" />
@@ -495,158 +918,48 @@ export default function Index() {
             </CardContent>
           </Card>
         ) : (
-          <div
-            ref={containerRef}
-            className="relative bg-gradient-to-br from-background to-muted/20"
-            style={{
-              minHeight: '600px',
-              height: containerSize.height > 0 ? `${containerSize.height}px` : '600px'
-            }}
-          >
-            {treemapLayout.length === 0 && (
-              <div className="absolute inset-0 flex items-center justify-center">
-                <div className="text-center">
-                  <Loader2 className="h-8 w-8 animate-spin mx-auto mb-2" />
-                  <p className="text-lg font-semibold">Calcolo layout treemap...</p>
-                  <p className="text-sm text-muted-foreground">Container: {containerSize.width}×{containerSize.height}</p>
+          <div className="flex gap-6 h-[calc(100vh-200px)]">
+            {/* Empty Lists Sidebar */}
+            <EmptyListsSidebar
+              emptyLists={lists.filter(list => {
+                const stats = listStats[list.list_id] || { totalRequirements: 0, totalDays: 0 };
+                return stats.totalRequirements === 0 || stats.totalDays === 0;
+              })}
+              listStats={listStats}
+              onSelectList={handleSelectList}
+              onDeleteList={openDeleteDialog}
+            />
+
+            {/* Treemap Container - ApexCharts Version */}
+            <div className="flex-1 min-h-0 flex flex-col">
+              <div className="flex flex-wrap items-start justify-between gap-3 mb-3">
+                <div>
+                  <p className="text-sm font-semibold">Distribuzione effort liste</p>
+                  <p className="text-xs text-muted-foreground">
+                    Le aree rappresentano i giorni stimati totali; clicca per aprire la lista
+                  </p>
                 </div>
-              </div>
-            )}
-            {treemapLayout.map((node) => {
-              const list = node.data as List;
-              const stats = listStats[list.list_id] || { totalRequirements: 0, totalDays: 0 };
-
-              // Determine layout based on card size using utility function
-              const variant = getCardSizeVariant(node.width, node.height);
-              const isSmall = variant === 'small';
-              const isMedium = variant === 'medium';
-              const isLarge = variant === 'large';
-
-              return (
-                <div
-                  key={list.list_id}
-                  className="absolute transition-all duration-300 ease-in-out"
-                  style={{
-                    left: `${node.x}px`,
-                    top: `${node.y}px`,
-                    width: `${node.width}px`,
-                    height: `${node.height}px`,
-                  }}
-                >
-                  <ListOverviewCard
-                    className="h-full cursor-pointer hover:shadow-xl hover:scale-[1.02] transition-all hover:z-10 dark:bg-gray-900/50 dark:border-gray-800 border-2"
-                    onClick={() => handleSelectList(list)}
-                    title={
-                      <div className="flex items-baseline gap-1">
-                        {!isSmall && <FileText className="h-4 w-4 shrink-0" />}
-                        <span className={`${isSmall ? 'text-sm' : ''} line-clamp-2 flex-1`}>
-                          {list.name}
-                        </span>
-                        <Badge
-                          variant="secondary"
-                          className={`${isSmall ? 'text-[10px] px-1.5 py-0' : 'text-xs'} shrink-0 bg-primary/10 text-primary font-bold`}
-                        >
-                          {stats.totalRequirements}
-                        </Badge>
+                {technologyLegend.length > 0 && (
+                  <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
+                    {technologyLegend.map(({ label, color }) => (
+                      <div key={label} className="flex items-center gap-2">
+                        <span className="h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: color }} />
+                        <span>{label}</span>
                       </div>
-                    }
-                    headerContent={
-                      !isSmall && (
-                        <div className="text-[10px] text-muted-foreground mt-1 opacity-50">
-                          {node.width.toFixed(0)}×{node.height.toFixed(0)}px
-                        </div>
-                      )
-                    }
-                    rightElement={
-                      !isSmall && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            openDeleteDialog(list);
-                          }}
-                          aria-label={`Elimina ${list.name}`}
-                          className="h-7 w-7 dark:hover:bg-gray-800"
-                        >
-                          <Trash2 className="h-3.5 w-3.5 text-red-600 dark:text-red-400" />
-                        </Button>
-                      )
-                    }
-                    contentClassName="flex flex-col h-full"
-                  >
-                    <div className="flex-1 flex flex-col justify-center">
-                      {/* Layout for SMALL cards */}
-                      {isSmall && (
-                        <div className="flex items-center justify-center gap-3">
-                          <div className="text-center">
-                            <div className="text-xs text-muted-foreground">Req</div>
-                            <div className="text-xl font-bold text-primary">{stats.totalRequirements}</div>
-                          </div>
-                          <div className="h-8 w-px bg-border"></div>
-                          <div className="text-center">
-                            <div className="text-xs text-muted-foreground">GG</div>
-                            <div className="text-xl font-bold text-primary">{stats.totalDays.toFixed(0)}</div>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Layout for MEDIUM cards */}
-                      {isMedium && (
-                        <div className="space-y-2">
-                          <div className="grid grid-cols-2 gap-3">
-                            <div className="text-center p-2 bg-primary/5 rounded">
-                              <div className="text-xs text-muted-foreground">Requisiti</div>
-                              <div className="text-2xl font-bold text-primary">{stats.totalRequirements}</div>
-                            </div>
-                            <div className="text-center p-2 bg-primary/5 rounded">
-                              <div className="text-xs text-muted-foreground">Giorni</div>
-                              <div className="text-2xl font-bold text-primary">{stats.totalDays.toFixed(1)}</div>
-                            </div>
-                          </div>
-                          {list.owner && (
-                            <div className="flex items-center text-xs text-gray-600 dark:text-gray-400 justify-center">
-                              <User className="h-3 w-3 mr-1" />
-                              <span className="truncate">{list.owner}</span>
-                            </div>
-                          )}
-                        </div>
-                      )}
-
-                      {/* Layout for LARGE cards */}
-                      {isLarge && (
-                        <div className="space-y-3">
-                          <div className="grid grid-cols-2 gap-4">
-                            <div className="text-center p-3 bg-primary/5 rounded-lg">
-                              <div className="text-sm text-muted-foreground mb-1">Requisiti</div>
-                              <div className="text-3xl font-bold text-primary">{stats.totalRequirements}</div>
-                            </div>
-                            <div className="text-center p-3 bg-primary/5 rounded-lg">
-                              <div className="text-sm text-muted-foreground mb-1">Giorni Totali</div>
-                              <div className="text-3xl font-bold text-primary">{stats.totalDays.toFixed(1)}</div>
-                            </div>
-                          </div>
-                          <div className="space-y-1.5">
-                            {list.owner && (
-                              <div className="flex items-center text-sm text-gray-600 dark:text-gray-400">
-                                <User className="h-4 w-4 mr-2" />
-                                <span>{list.owner}</span>
-                              </div>
-                            )}
-                            {list.period && (
-                              <div className="flex items-center text-sm text-gray-600 dark:text-gray-400">
-                                <Calendar className="h-4 w-4 mr-2" />
-                                <span>{list.period}</span>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </ListOverviewCard>
-                </div>
-              );
-            })}
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div className="flex-1 min-h-0">
+                <TreemapApex
+                  lists={lists}
+                  listStats={listStats}
+                  onSelectList={handleSelectList}
+                  containerHeight={window.innerHeight - 200}
+                  showLegend={false}
+                />
+              </div>
+            </div>
           </div>
         )}
 
@@ -706,6 +1019,7 @@ export default function Index() {
           </AlertDialogContent>
         </AlertDialog>
       </div>
-    </div>
+    </div >
   );
 }
+

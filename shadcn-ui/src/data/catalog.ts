@@ -262,17 +262,17 @@ export const drivers: Driver[] = [
   { driver: 'complexity', option: 'Low', multiplier: 0.8, explanation: 'Requisito semplice, logica lineare' },
   { driver: 'complexity', option: 'Medium', multiplier: 1.0, explanation: 'Complessità standard, alcune condizioni' },
   { driver: 'complexity', option: 'High', multiplier: 1.5, explanation: 'Logica complessa, molte condizioni e eccezioni' },
-  
+
   // Environments
   { driver: 'environments', option: '1 env', multiplier: 0.7, explanation: 'Solo ambiente di sviluppo' },
   { driver: 'environments', option: '2 env', multiplier: 1.0, explanation: 'Dev + Test o Dev + Prod' },
   { driver: 'environments', option: '3 env', multiplier: 1.3, explanation: 'Dev + Test + Prod completi' },
-  
+
   // Reuse
   { driver: 'reuse', option: 'High', multiplier: 0.6, explanation: 'Riutilizzo elevato di componenti esistenti' },
   { driver: 'reuse', option: 'Medium', multiplier: 1.0, explanation: 'Parziale riutilizzo di componenti' },
   { driver: 'reuse', option: 'Low', multiplier: 1.4, explanation: 'Sviluppo prevalentemente ex-novo' },
-  
+
   // Stakeholders
   { driver: 'stakeholders', option: '1 team', multiplier: 0.8, explanation: 'Singolo team coinvolto' },
   { driver: 'stakeholders', option: '2-3 team', multiplier: 1.0, explanation: 'Coordinamento tra pochi team' },
@@ -280,11 +280,117 @@ export const drivers: Driver[] = [
 ];
 
 export const risks: Risk[] = [
-  { risk_id: 'R001', risk_item: 'Requisiti instabili', weight: 5, guidance: 'Frequenti cambi di requisiti durante sviluppo' },
-  { risk_id: 'R002', risk_item: 'Dipendenze esterne', weight: 4, guidance: 'Dipendenza da sistemi/team esterni' },
-  { risk_id: 'R003', risk_item: 'Competenze mancanti', weight: 6, guidance: 'Team non esperto sulla tecnologia' },
-  { risk_id: 'R004', risk_item: 'Integrazione complessa', weight: 5, guidance: 'Integrazioni con sistemi legacy' },
-  { risk_id: 'R005', risk_item: 'Performance critiche', weight: 4, guidance: 'Requisiti di performance stringenti' }
+  // TECHNICAL RISKS (Power Platform specific)
+  {
+    risk_id: 'T001',
+    risk_item: 'Connettori Premium non testati',
+    category: 'Technical',
+    weight: 4,
+    guidance: 'Connettori premium (SAP, Salesforce) non validati in ambiente. Mitiga: PoC su connettore, test licenze.',
+    mitigation: 'Creare ambiente test con licenze premium, validare API limits e throttling'
+  },
+  {
+    risk_id: 'T002',
+    risk_item: 'Limiti API/throttling',
+    category: 'Technical',
+    weight: 5,
+    guidance: 'Volumi elevati possono superare limiti Dataverse/Power Automate (24h limits, 5min window). Mitiga: batch, retry exponential.',
+    mitigation: 'Implementare batching, exponential backoff, monitoring dei limiti API'
+  },
+  {
+    risk_id: 'T003',
+    risk_item: 'Performance su dataset grandi',
+    category: 'Technical',
+    weight: 5,
+    guidance: 'Canvas app lenta su tabelle >5K record, form complessi. Mitiga: delegation, indexing, data virtualization.',
+    mitigation: 'Verificare delegation patterns, ottimizzare query, usare views con filtri'
+  },
+  {
+    risk_id: 'T004',
+    risk_item: 'Plugin C# complessi',
+    category: 'Technical',
+    weight: 6,
+    guidance: 'Business logic complessa richiede custom plugin oltre le capacità low-code. Mitiga: spike tecnico, sandbox test.',
+    mitigation: 'Spike di 1-2gg per validare fattibilità, setup ambiente debug plugin'
+  },
+
+  // BUSINESS RISKS
+  {
+    risk_id: 'B001',
+    risk_item: 'Requisiti instabili/scope creep',
+    category: 'Business',
+    weight: 5,
+    guidance: 'Requisiti cambiano frequentemente durante sviluppo. Mitiga: demo iterative, sign-off incrementali.',
+    mitigation: 'Demo bisettimanali, documentare change requests, freeze scope per sprint'
+  },
+  {
+    risk_id: 'B002',
+    risk_item: 'Stakeholder non disponibili',
+    category: 'Business',
+    weight: 4,
+    guidance: 'Business owner/SME non disponibili per chiarimenti. Mitiga: pre-book slot, decision log documentato.',
+    mitigation: 'Bloccare slot ricorrenti, escalation path chiaro, decision log condiviso'
+  },
+  {
+    risk_id: 'B003',
+    risk_item: 'Competenze team limitate',
+    category: 'Business',
+    weight: 5,
+    guidance: 'Team poco esperto su Power Platform o dominio business. Mitiga: pairing, training, spike tecnici.',
+    mitigation: 'Pair programming, workshop interni, allocare tempo per spike e learning'
+  },
+
+  // GOVERNANCE RISKS
+  {
+    risk_id: 'G001',
+    risk_item: 'Licensing non chiaro',
+    category: 'Governance',
+    weight: 4,
+    guidance: 'Incertezza su licenze richieste (per-app, per-user, premium). Mitiga: validation licensing upfront.',
+    mitigation: 'Validare licensing requirements con Microsoft, ottenere approvazione procurement'
+  },
+  {
+    risk_id: 'G002',
+    risk_item: 'ALM/pipeline non configurati',
+    category: 'Governance',
+    weight: 5,
+    guidance: 'Ambiente DEV/TEST/PROD non configurati, nessuna pipeline CI/CD. Mitiga: setup upfront environments.',
+    mitigation: 'Setup ambienti prima dello sviluppo, configurare Azure DevOps/GitHub Actions'
+  },
+  {
+    risk_id: 'G003',
+    risk_item: 'Security/DLP policies blocchi',
+    category: 'Governance',
+    weight: 6,
+    guidance: 'DLP policy aziendali bloccano connettori richiesti. Mitiga: validation policy upfront, richiesta eccezioni.',
+    mitigation: 'Verificare DLP policies prima dello sviluppo, aprire ticket eccezioni con governance'
+  },
+
+  // INTEGRATION RISKS
+  {
+    risk_id: 'I001',
+    risk_item: 'Sistemi legacy non documentati',
+    category: 'Integration',
+    weight: 5,
+    guidance: 'Integrazione con sistemi legacy senza API/documentazione. Mitiga: reverse engineering, interfaccia adapter.',
+    mitigation: 'Allocare tempo per analisi sistema target, creare layer adapter se necessario'
+  },
+  {
+    risk_id: 'I002',
+    risk_item: 'Dipendenze team esterni',
+    category: 'Integration',
+    weight: 4,
+    guidance: 'Dipendenza da altri team IT per API/accessi. Mitiga: early engagement, mock per sviluppo parallelo.',
+    mitigation: 'Coinvolgere team esterni da subito, creare mock API per sviluppo indipendente'
+  },
+  {
+    risk_id: 'I003',
+    risk_item: 'Network/firewall restrictions',
+    category: 'Integration',
+    weight: 4,
+    guidance: 'Firewall aziendali bloccano chiamate API cloud. Mitiga: validation infrastruttura, on-premise gateway.',
+    mitigation: 'Test connectivity upfront, configurare on-premise data gateway se necessario'
+  }
 ];
 
 export const contingencyBands: ContingencyBand[] = [
