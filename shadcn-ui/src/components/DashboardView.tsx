@@ -134,15 +134,8 @@ export function DashboardView({ list, requirements, onBack }: DashboardViewProps
 
     return (
         <div className="space-y-4">
-            {/* Header con metriche integrate - nessuna ridondanza */}
-            <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                    <Button variant="ghost" onClick={onBack} className="gap-2">
-                        ← <span className="text-muted-foreground">Liste</span>
-                        <span className="text-muted-foreground">/</span>
-                        <span className="font-semibold">{list.name}</span>
-                    </Button>
-                </div>
+            {/* Header con metriche integrate */}
+            <div className="flex items-center justify-end">
                 <div className="flex items-center gap-4 text-sm">
                     {filteredReqs.length === requirements.length ? (
                         <>

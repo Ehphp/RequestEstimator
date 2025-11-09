@@ -11,6 +11,11 @@ export interface List {
   owner?: string;
   period?: string;
   notes?: string;
+  // Default fields for requirements (cascade defaults)
+  default_priority?: 'High' | 'Med' | 'Low';
+  default_business_owner?: string;
+  default_labels?: string;
+  default_description?: string;
 }
 
 export interface Requirement {

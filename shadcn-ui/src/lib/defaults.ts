@@ -3,6 +3,38 @@ import { presets, getCurrentQuarter, inferPriorityFromTitle, inferLabelsFromTitl
 import { getStickyDefaults as getSupabaseStickyDefaults, saveStickyDefaults as saveSupabaseStickyDefaults } from './storage';
 import { logger } from './logger';
 
+/**
+ * DEFAULTS SYSTEM ARCHITECTURE
+ * ============================
+ * 
+ * This module implements a multi-tiered cascade defaults system with three levels:
+ * 
+ * 1. LIST DEFAULTS (getListDefaults)
+ *    - Owner, period, status for lists
+ *    - NEW: Default values for requirements (priority, business_owner, labels, description)
+ * 
+ * 2. REQUIREMENT DEFAULTS (getRequirementDefaults) - CASCADE LOGIC:
+ *    Priority:       List Default → Keyword Analysis → System Default ('Med')
+ *    Business Owner: List.default_business_owner → List.owner → Empty
+ *    Labels:         List Default → Keyword Analysis → Empty
+ *    Description:    List Default → Preset Template → Empty
+ * 
+ * 3. ESTIMATE DEFAULTS (getEstimateDefaults) - CASCADE LOGIC:
+ *    Complexity:     Sticky/Estimator → Preset → Default ('Medium')
+ *    Environments:   Preset → Default ('2 env')
+ *    Reuse:          Preset → Default ('Medium')
+ *    Stakeholders:   Labels Analysis → Preset → Default ('1 team')
+ *    Activities:     Sticky/Estimator → Preset → Empty
+ *    Risks:          Title Analysis → Preset → Empty
+ * 
+ * KEY PRINCIPLES:
+ * - Explicit defaults (List, Preset) always override inference
+ * - Inference (Keywords, Analysis) provides smart fallbacks
+ * - System defaults ensure all required fields have values
+ * - Backward compatible: existing data continues to work
+ * - All defaults tracked with source attribution for transparency
+ */
+
 // Sticky defaults management (now using Supabase)
 export async function getStickyDefaults(user: string, listId: string): Promise<StickyDefaults | null> {
   try {
@@ -37,7 +69,7 @@ export function getListDefaults(currentUser: string): Partial<List> {
   };
 }
 
-// Requirement defaults
+// Requirement defaults with cascade logic: List Default → Preset → Keyword Analysis → System Default
 export function getRequirementDefaults(
   list: List,
   currentUser: string,
@@ -46,52 +78,94 @@ export function getRequirementDefaults(
   const preset = list.preset_key ? presets.find(p => p.preset_key === list.preset_key) : null;
   const sources: DefaultSource[] = [];
 
-  // Priority from title analysis
-  const inferredPriority = inferPriorityFromTitle(title);
+  // PRIORITY: List Default → Keyword Analysis → System Default
+  let priority: Requirement['priority'];
+  let prioritySource: string;
+  if (list.default_priority) {
+    // List has explicit default priority
+    priority = list.default_priority;
+    prioritySource = 'List Default';
+  } else {
+    // Fall back to keyword analysis
+    priority = inferPriorityFromTitle(title) as Requirement['priority'];
+    prioritySource = title ? 'Keyword Analysis' : 'Default';
+  }
   sources.push({
     field: 'priority',
-    value: inferredPriority,
-    source: title ? 'Keyword Analysis' : 'Default',
+    value: priority,
+    source: prioritySource,
     is_overridden: false
   });
 
-  // Labels from title analysis
-  const inferredLabels = inferLabelsFromTitle(title);
-  const labelsString = inferredLabels.join(', ');
-  if (inferredLabels.length > 0) {
+  // LABELS: List Default → Keyword Analysis → Empty
+  let labels: string;
+  let labelsSource: string | undefined;
+  if (list.default_labels) {
+    // List has explicit default labels
+    labels = list.default_labels;
+    labelsSource = 'List Default';
     sources.push({
       field: 'labels',
-      value: labelsString,
-      source: 'Keyword Analysis',
+      value: labels,
+      source: labelsSource,
       is_overridden: false
     });
+  } else {
+    // Fall back to keyword analysis
+    const inferredLabels = inferLabelsFromTitle(title);
+    labels = inferredLabels.join(', ');
+    if (inferredLabels.length > 0) {
+      labelsSource = 'Keyword Analysis';
+      sources.push({
+        field: 'labels',
+        value: labels,
+        source: labelsSource,
+        is_overridden: false
+      });
+    }
   }
 
-  // Description from preset
+  // DESCRIPTION: List Default → Preset → Empty
   let description = '';
-  if (preset) {
-    description = preset.description_template.replace('{evento}', 'evento specifico');
+  let descriptionSource: string | undefined;
+  if (list.default_description) {
+    // List has explicit default description
+    description = list.default_description;
+    descriptionSource = 'List Default';
     sources.push({
       field: 'description',
       value: description,
-      source: `Preset: ${preset.name}`,
+      source: descriptionSource,
+      is_overridden: false
+    });
+  } else if (preset) {
+    // Fall back to preset template
+    description = preset.description_template.replace('{evento}', 'evento specifico');
+    descriptionSource = `Preset: ${preset.name}`;
+    sources.push({
+      field: 'description',
+      value: description,
+      source: descriptionSource,
       is_overridden: false
     });
   }
 
+  // BUSINESS_OWNER: List.default_business_owner → List.owner → Empty
+  const businessOwner = list.default_business_owner || list.owner || '';
+
   const defaults: Partial<Requirement> = {
-    priority: inferredPriority as Requirement['priority'],
-    business_owner: list.owner,
-    labels: labelsString,
+    priority,
+    business_owner: businessOwner,
+    labels,
     state: 'Proposed',
     estimator: currentUser,
-    description: description,
+    description,
     // Default source tracking
-    priority_default_source: title ? 'Keyword Analysis' : 'Default',
+    priority_default_source: prioritySource,
     priority_is_overridden: false,
-    labels_default_source: inferredLabels.length > 0 ? 'Keyword Analysis' : undefined,
+    labels_default_source: labelsSource,
     labels_is_overridden: false,
-    description_default_source: preset ? `Preset: ${preset.name}` : undefined,
+    description_default_source: descriptionSource,
     description_is_overridden: false
   };
 
