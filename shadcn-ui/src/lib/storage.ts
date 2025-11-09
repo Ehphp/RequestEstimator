@@ -8,6 +8,61 @@ export function generateId(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 }
 
+interface DeleteEntityOptions {
+  id: string;
+  table: string;
+  column: string;
+  validationMessage: string;
+  notFoundMessage: string;
+  verifyErrorMessage: string;
+  deleteErrorMessage: string;
+  logLabel: string;
+  successLogMessage?: (id: string) => string;
+}
+
+async function deleteEntityWithCascade({
+  id,
+  table,
+  column,
+  validationMessage,
+  notFoundMessage,
+  verifyErrorMessage,
+  deleteErrorMessage,
+  logLabel,
+  successLogMessage
+}: DeleteEntityOptions): Promise<void> {
+  if (!id || typeof id !== 'string') {
+    throw new Error(validationMessage);
+  }
+
+  const { error: checkError } = await supabase
+    .from(table)
+    .select(column)
+    .eq(column, id)
+    .single();
+
+  if (checkError) {
+    if (isNotFoundError(checkError)) {
+      throw new Error(notFoundMessage);
+    }
+    throwDbError(checkError, verifyErrorMessage);
+  }
+
+  const { error: deleteError } = await supabase
+    .from(table)
+    .delete()
+    .eq(column, id);
+
+  if (deleteError) {
+    throwDbError(deleteError, deleteErrorMessage);
+  }
+
+  logCrud.delete(logLabel, id);
+  if (successLogMessage) {
+    logger.info(successLogMessage(id));
+  }
+}
+
 // Lists Management
 export async function getLists(): Promise<List[]> {
   return safeDbRead(async () => {
@@ -62,40 +117,17 @@ export async function saveList(list: List): Promise<void> {
 }
 
 export async function deleteList(listId: string): Promise<void> {
-  // Validazione input
-  if (!listId || typeof listId !== 'string') {
-    throw new Error('ID lista non valido');
-  }
-
-  // Step 1: Verifica che la lista esista
-  const { error: checkError } = await supabase
-    .from(TABLES.LISTS)
-    .select('list_id')
-    .eq('list_id', listId)
-    .single();
-
-  if (checkError) {
-    if (isNotFoundError(checkError)) {
-      throw new Error('Lista non trovata');
-    }
-    throwDbError(checkError, 'Errore verifica lista');
-  }
-
-  // Step 2: Elimina lista
-  // Le Foreign Keys con ON DELETE CASCADE eliminano automaticamente:
-  // - requirements collegati
-  // - estimates collegati ai requirements
-  const { error: deleteError } = await supabase
-    .from(TABLES.LISTS)
-    .delete()
-    .eq('list_id', listId);
-
-  if (deleteError) {
-    throwDbError(deleteError, 'Impossibile eliminare la lista');
-  }
-
-  logCrud.delete('List', listId);
-  logger.info(`Successfully deleted list ${listId} (cascade handled by database)`);
+  await deleteEntityWithCascade({
+    id: listId,
+    table: TABLES.LISTS,
+    column: 'list_id',
+    validationMessage: 'ID lista non valido',
+    notFoundMessage: 'Lista non trovata',
+    verifyErrorMessage: 'Errore verifica lista',
+    deleteErrorMessage: 'Impossibile eliminare la lista',
+    logLabel: 'List',
+    successLogMessage: (id) => `Successfully deleted list ${id} (cascade handled by database)`
+  });
 }
 
 // Requirements Management
@@ -126,39 +158,17 @@ export async function saveRequirement(requirement: Requirement): Promise<void> {
 }
 
 export async function deleteRequirement(reqId: string): Promise<void> {
-  // Validazione input
-  if (!reqId || typeof reqId !== 'string') {
-    throw new Error('ID requisito non valido');
-  }
-
-  // Step 1: Verifica che il requisito esista
-  const { error: checkError } = await supabase
-    .from(TABLES.REQUIREMENTS)
-    .select('req_id')
-    .eq('req_id', reqId)
-    .single();
-
-  if (checkError) {
-    if (isNotFoundError(checkError)) {
-      throw new Error('Requisito non trovato');
-    }
-    throwDbError(checkError, 'Errore verifica requisito');
-  }
-
-  // Step 2: Elimina requisito
-  // Le Foreign Keys con ON DELETE CASCADE eliminano automaticamente
-  // gli estimates collegati
-  const { error: deleteError } = await supabase
-    .from(TABLES.REQUIREMENTS)
-    .delete()
-    .eq('req_id', reqId);
-
-  if (deleteError) {
-    throwDbError(deleteError, 'Impossibile eliminare il requisito');
-  }
-
-  logCrud.delete('Requirement', reqId);
-  logger.info(`Successfully deleted requirement ${reqId} (cascade handled by database)`);
+  await deleteEntityWithCascade({
+    id: reqId,
+    table: TABLES.REQUIREMENTS,
+    column: 'req_id',
+    validationMessage: 'ID requisito non valido',
+    notFoundMessage: 'Requisito non trovato',
+    verifyErrorMessage: 'Errore verifica requisito',
+    deleteErrorMessage: 'Impossibile eliminare il requisito',
+    logLabel: 'Requirement',
+    successLogMessage: (id) => `Successfully deleted requirement ${id} (cascade handled by database)`
+  });
 }
 
 // Estimates Management

@@ -25,6 +25,12 @@
 - **Performance**: 4 queries → 2 queries (**-60%**)
 - **Breaking**: Nessuno (comportamento identico, più veloce)
 
+### 4. ✅ Componenti condivisi per form/list e filtri
+- **File creati**: `src/components/requirements/RequirementFormFields.tsx`, `src/components/lists/ListOverviewCard.tsx`, `src/components/requirements/FilterPopover.tsx`, `src/constants/requirements.ts`
+- **File modificati**: `RequirementsList.tsx`, `RequirementsView.tsx`, `ListsView.tsx`, `pages/Index.tsx`
+- **Benefici**: -200 LOC duplicati, UX omogenea su dialog/form e card liste, filtri più accessibili
+- **Breaking**: Nessuno (API dei componenti ospiti invariata)
+
 ### 4. ✅ Magic Numbers Estratti in Costanti
 - **File creato**: `constants.ts`
 - **File modificato**: `calculations.ts`
@@ -106,6 +112,10 @@ const { data: { session } } = await supabase.auth.getSession();
 ### File Creati
 - ✅ `DEEP_ANALYSIS_REPORT.md` - Analisi completa 25+ problemi
 - ✅ `src/lib/constants.ts` - Costanti applicazione
+- ✅ `src/constants/requirements.ts` - Opzioni condivise per priorità/stati
+- ✅ `src/components/requirements/RequirementFormFields.tsx` - Form riusabile requisiti
+- ✅ `src/components/requirements/FilterPopover.tsx` - Popover filtri parametrico
+- ✅ `src/components/lists/ListOverviewCard.tsx` - Card liste riusabile
 - ✅ `IMPLEMENTATION_SUMMARY.md` - Questo documento
 
 ### File Modificati
@@ -114,6 +124,8 @@ const { data: { session } } = await supabase.auth.getSession();
 - ✅ `src/types.ts` - Campi inutilizzati rimossi
 - ✅ `src/lib/storage.ts` - Cascade delete semplificato
 - ✅ `src/lib/calculations.ts` - Magic numbers sostituiti con costanti
+- ✅ `src/components/RequirementsList.tsx` - Usa form/filtri condivisi
+- ✅ `src/pages/Index.tsx` - Card lista condivisa
 
 ---
 

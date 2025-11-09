@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Plus, FileDown, Eye, Edit, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -15,6 +14,7 @@ import { getListDefaults } from '../lib/defaults';
 import { presets } from '../data/presets';
 import { ExportDialog } from './ExportDialog';
 import { DefaultPill } from './DefaultPill';
+import { ListOverviewCard } from './lists/ListOverviewCard';
 
 interface ListsViewProps {
   onSelectList: (listId: string) => void;
@@ -379,77 +379,78 @@ export function ListsView({ onSelectList }: ListsViewProps) {
             const preset = list.preset_key ? presets.find(p => p.preset_key === list.preset_key) : null;
 
             return (
-              <Card key={list.list_id} className="hover:shadow-md transition-shadow">
-                <CardHeader className="pb-3">
-                  <div className="flex justify-between items-start">
-                    <div className="flex-1">
-                      <CardTitle className="text-lg">{list.name}</CardTitle>
-                      <p className="text-sm text-muted-foreground mt-1">
-                        Owner: {list.owner} • {list.period}
-                      </p>
-                      {preset && (
-                        <Badge variant="outline" className="mt-2 text-xs">
-                          Preset: {preset.name}
-                        </Badge>
-                      )}
-                    </div>
-                    <Badge className={getStatusColor(list.status)}>
-                      {list.status}
-                    </Badge>
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4 text-sm">
-                    <div>
-                      <p className="text-muted-foreground">Requisiti</p>
-                      <p className="font-semibold">{stats.totalRequirements}</p>
-                    </div>
-                    <div>
-                      <p className="text-muted-foreground">Giorni Totali</p>
-                      <p className="font-semibold">{stats.totalDays.toFixed(1)}</p>
-                    </div>
-                  </div>
-
-                  {list.notes && (
-                    <p className="text-sm text-muted-foreground line-clamp-2">
-                      {list.notes}
+              <ListOverviewCard
+                key={list.list_id}
+                title={list.name}
+                className="hover:shadow-md transition-shadow"
+                headerContent={
+                  <>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Owner: {list.owner} • {list.period}
                     </p>
-                  )}
-
-                  <div className="flex gap-2">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => onSelectList(list.list_id)}
-                      className="flex-1"
-                    >
-                      <Eye className="h-4 w-4 mr-1" />
-                      Visualizza
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => setExportListId(list.list_id)}
-                    >
-                      <FileDown className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => handleEdit(list)}
-                    >
-                      <Edit className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => handleDelete(list.list_id)}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+                    {preset && (
+                      <Badge variant="outline" className="mt-2 text-xs">
+                        Preset: {preset.name}
+                      </Badge>
+                    )}
+                  </>
+                }
+                rightElement={
+                  <Badge className={getStatusColor(list.status)}>
+                    {list.status}
+                  </Badge>
+                }
+              >
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <p className="text-muted-foreground">Requisiti</p>
+                    <p className="font-semibold">{stats.totalRequirements}</p>
                   </div>
-                </CardContent>
-              </Card>
+                  <div>
+                    <p className="text-muted-foreground">Giorni Totali</p>
+                    <p className="font-semibold">{stats.totalDays.toFixed(1)}</p>
+                  </div>
+                </div>
+
+                {list.notes && (
+                  <p className="text-sm text-muted-foreground line-clamp-2">
+                    {list.notes}
+                  </p>
+                )}
+
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => onSelectList(list.list_id)}
+                    className="flex-1"
+                  >
+                    <Eye className="h-4 w-4 mr-1" />
+                    Visualizza
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setExportListId(list.list_id)}
+                  >
+                    <FileDown className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => handleEdit(list)}
+                  >
+                    <Edit className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => handleDelete(list.list_id)}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              </ListOverviewCard>
             );
           })}
         </div>

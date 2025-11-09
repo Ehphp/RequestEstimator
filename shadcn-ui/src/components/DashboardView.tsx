@@ -25,6 +25,7 @@ import {
     ResponsiveContainer
 } from 'recharts';
 import { List, Requirement, DashboardFilters, RequirementWithEstimate } from '../types';
+import { TreemapView } from './TreemapView';
 import {
     prepareRequirementsWithEstimates,
     calculateDashboardKPIs,
@@ -116,32 +117,6 @@ export function DashboardView({ list, requirements, onBack }: DashboardViewProps
             }));
     }, [filteredReqs]);
 
-    // Dati per bar chart per tag
-    const tagChartData = useMemo(() => {
-        const tagEfforts = new Map<string, { total: number; High: number; Med: number; Low: number }>();
-
-        filteredReqs
-            .filter(r => r.estimationDays > 0)
-            .forEach(r => {
-                r.tags.forEach(tag => {
-                    if (!tagEfforts.has(tag)) {
-                        tagEfforts.set(tag, { total: 0, High: 0, Med: 0, Low: 0 });
-                    }
-                    const entry = tagEfforts.get(tag)!;
-                    entry.total += r.estimationDays;
-                    entry[r.requirement.priority] += r.estimationDays;
-                });
-            });
-
-        return Array.from(tagEfforts.entries())
-            .map(([tag, efforts]) => ({
-                tag,
-                ...efforts
-            }))
-            .sort((a, b) => b.total - a.total)
-            .slice(0, 10); // Top 10 tag
-    }, [filteredReqs]);
-
     const handleTogglePriority = (priority: 'High' | 'Med' | 'Low') => {
         setFilters(prev => ({
             ...prev,
@@ -158,45 +133,46 @@ export function DashboardView({ list, requirements, onBack }: DashboardViewProps
     };
 
     return (
-        <div className="space-y-2">
-            {/* Header ultra-compatto con breadcrumb */}
-            <div className="flex items-center justify-between py-1">
-                <div className="flex items-center gap-3">
-                    <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={onBack}
-                        className="h-7 px-2 text-xs"
-                    >
-                        ← Liste
+        <div className="space-y-4">
+            {/* Header con metriche integrate - nessuna ridondanza */}
+            <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                    <Button variant="ghost" onClick={onBack} className="gap-2">
+                        ← <span className="text-muted-foreground">Liste</span>
+                        <span className="text-muted-foreground">/</span>
+                        <span className="font-semibold">{list.name}</span>
                     </Button>
-                    <span className="text-muted-foreground text-xs">/</span>
-                    <h1 className="text-lg font-bold">{list.name}</h1>
-                    <Badge variant="outline" className="text-xs">Dashboard</Badge>
-                    <p className="text-xs text-muted-foreground">
-                        {filteredReqs.length === requirements.length ? (
-                            <span>{filteredReqs.length} requisiti</span>
-                        ) : (
-                            <span>
+                </div>
+                <div className="flex items-center gap-4 text-sm">
+                    {filteredReqs.length === requirements.length ? (
+                        <>
+                            <span className="font-semibold">{filteredReqs.length} requisiti</span>
+                            <span className="text-muted-foreground">•</span>
+                        </>
+                    ) : (
+                        <>
+                            <span className="font-semibold">
                                 {filteredReqs.length} di {requirements.length} requisiti
-                                <Badge variant="secondary" className="ml-1 text-[10px] h-4 px-1">
-                                    filtrati
-                                </Badge>
                             </span>
-                        )}
-                        <span className="mx-1">•</span>
-                        {kpis.totalDays} gg/uomo
-                        <span className="ml-2 text-green-600">● Live</span>
-                    </p>
+                            <Badge variant="secondary" className="text-xs">Filtrati</Badge>
+                            <span className="text-muted-foreground">•</span>
+                        </>
+                    )}
+                    <span className="font-semibold">{kpis.totalDays} gg/uomo</span>
+                    <span className="text-muted-foreground">•</span>
+                    <Badge variant="outline" className="gap-1 text-green-600 border-green-600">
+                        <span className="w-2 h-2 bg-green-600 rounded-full"></span>
+                        Live
+                    </Badge>
                 </div>
             </div>
 
-            {/* KPI Row compatta - 3 cards combinate */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            {/* KPI Row compatta - 4 cards combinate */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-2">
                 {/* Card 1: Metriche Base */}
                 <Card className="border-l-4 border-l-blue-500">
-                    <CardContent className="p-2.5">
-                        <div className="grid grid-cols-2 gap-2.5">
+                    <CardContent className="p-2">
+                        <div className="grid grid-cols-2 gap-2">
                             <div>
                                 <div className="text-xs text-muted-foreground">Totale</div>
                                 <div className="text-lg font-bold flex items-center gap-1">
@@ -216,7 +192,7 @@ export function DashboardView({ list, requirements, onBack }: DashboardViewProps
                                 <div className="text-xs text-muted-foreground">per req</div>
                             </div>
                         </div>
-                        <Separator className="my-1.5" />
+                        <Separator className="my-1" />
                         <div className="flex justify-between text-xs">
                             <span className="text-muted-foreground">Mediana: <strong>{kpis.medianDays}</strong></span>
                             <span className="text-muted-foreground">P80: <strong>{kpis.p80Days}</strong></span>
@@ -226,8 +202,8 @@ export function DashboardView({ list, requirements, onBack }: DashboardViewProps
 
                 {/* Card 2: Priority Mix */}
                 <Card className="border-l-4 border-l-red-500">
-                    <CardContent className="p-2.5">
-                        <div className="text-xs text-muted-foreground mb-1.5">Priority Mix</div>
+                    <CardContent className="p-2">
+                        <div className="text-xs text-muted-foreground mb-1">Priority Mix</div>
                         <TooltipProvider>
                             <div className="space-y-1">
                                 <div className="flex items-center justify-between">
@@ -283,10 +259,83 @@ export function DashboardView({ list, requirements, onBack }: DashboardViewProps
                     </CardContent>
                 </Card>
 
-                {/* Card 3: Timeline */}
+                {/* Card 3: Mix Difficoltà con cerchi */}
+                <Card className="border-l-4 border-l-green-500 group">
+                    <CardContent className="p-2">
+                        <div className="text-xs text-muted-foreground mb-1">Mix Difficoltà</div>
+                        <TooltipProvider>
+                            <div className="flex items-center justify-center gap-2 group-hover:gap-3 transition-all duration-300">
+                                {/* Low - Verde */}
+                                <UITooltip>
+                                    <TooltipTrigger asChild>
+                                        <div
+                                            className="rounded-full bg-green-500 flex items-center justify-center text-white font-bold cursor-help transition-all duration-300 group-hover:scale-110"
+                                            style={{
+                                                width: `${Math.max(28, Math.min(48, 28 + (kpis.difficultyMix.low || 0) * 3))}px`,
+                                                height: `${Math.max(28, Math.min(48, 28 + (kpis.difficultyMix.low || 0) * 3))}px`,
+                                            }}
+                                        >
+                                            <span className="text-xs opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                                                {kpis.difficultyMix.low || 0}
+                                            </span>
+                                        </div>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                        <p className="text-xs font-semibold">Low</p>
+                                        <p className="text-xs">{kpis.difficultyMix.low || 0} requisiti</p>
+                                    </TooltipContent>
+                                </UITooltip>
+
+                                {/* Medium - Giallo */}
+                                <UITooltip>
+                                    <TooltipTrigger asChild>
+                                        <div
+                                            className="rounded-full bg-yellow-500 flex items-center justify-center text-white font-bold cursor-help transition-all duration-300 group-hover:scale-110"
+                                            style={{
+                                                width: `${Math.max(28, Math.min(48, 28 + (kpis.difficultyMix.medium || 0) * 3))}px`,
+                                                height: `${Math.max(28, Math.min(48, 28 + (kpis.difficultyMix.medium || 0) * 3))}px`,
+                                            }}
+                                        >
+                                            <span className="text-xs opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                                                {kpis.difficultyMix.medium || 0}
+                                            </span>
+                                        </div>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                        <p className="text-xs font-semibold">Medium</p>
+                                        <p className="text-xs">{kpis.difficultyMix.medium || 0} requisiti</p>
+                                    </TooltipContent>
+                                </UITooltip>
+
+                                {/* High - Rosso */}
+                                <UITooltip>
+                                    <TooltipTrigger asChild>
+                                        <div
+                                            className="rounded-full bg-red-500 flex items-center justify-center text-white font-bold cursor-help transition-all duration-300 group-hover:scale-110"
+                                            style={{
+                                                width: `${Math.max(28, Math.min(48, 28 + (kpis.difficultyMix.high || 0) * 3))}px`,
+                                                height: `${Math.max(28, Math.min(48, 28 + (kpis.difficultyMix.high || 0) * 3))}px`,
+                                            }}
+                                        >
+                                            <span className="text-xs opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                                                {kpis.difficultyMix.high || 0}
+                                            </span>
+                                        </div>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                        <p className="text-xs font-semibold">High</p>
+                                        <p className="text-xs">{kpis.difficultyMix.high || 0} requisiti</p>
+                                    </TooltipContent>
+                                </UITooltip>
+                            </div>
+                        </TooltipProvider>
+                    </CardContent>
+                </Card>
+
+                {/* Card 4: Timeline */}
                 <Card className="border-l-4 border-l-purple-500">
-                    <CardContent className="p-2.5">
-                        <div className="flex items-center justify-between mb-1.5">
+                    <CardContent className="p-2">
+                        <div className="flex items-center justify-between mb-1">
                             <span className="text-xs text-muted-foreground">Timeline ({priorityPolicy})</span>
                             <Button
                                 variant="ghost"
@@ -298,7 +347,7 @@ export function DashboardView({ list, requirements, onBack }: DashboardViewProps
                                 ⇄ Cambia
                             </Button>
                         </div>
-                        <div className="space-y-1">
+                        <div className="space-y-0.5">
                             <div className="flex justify-between items-center">
                                 <span className="text-xs text-muted-foreground">Inizio</span>
                                 <span className="text-xs font-semibold">{formatDate(filters.startDate)}</span>
@@ -318,134 +367,82 @@ export function DashboardView({ list, requirements, onBack }: DashboardViewProps
                 </Card>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-4 gap-2.5">
+            <div className="grid grid-cols-1 lg:grid-cols-4 gap-2">
                 {/* Colonna sinistra: Grafici principali (3 colonne) */}
-                <div className="lg:col-span-3 grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                <div className="lg:col-span-3 grid grid-cols-1 md:grid-cols-2 gap-2">
                     {/* Scatter Plot - Effort vs Difficulty */}
-                    <Card>
-                        <CardHeader className="pb-1.5">
+                    <Card className="flex flex-col">
+                        <CardHeader className="pb-1 px-3 pt-2">
                             <CardTitle className="flex items-center gap-2 text-sm">
                                 <BarChart3 className="h-4 w-4" />
                                 Effort × Difficulty
                             </CardTitle>
                         </CardHeader>
-                        <CardContent className="pb-1.5">
-                            <ResponsiveContainer width="100%" height={180}>
-                                <ScatterChart margin={{ top: 5, right: 10, bottom: 20, left: 10 }}>
-                                    <CartesianGrid strokeDasharray="3 3" />
-                                    <XAxis
-                                        type="number"
-                                        dataKey="difficulty"
-                                        name="Difficulty"
-                                        domain={[0, 6]}
-                                        tick={{ fontSize: 11 }}
-                                    />
-                                    <YAxis
-                                        type="number"
-                                        dataKey="estimationDays"
-                                        name="Giorni/uomo"
-                                        tick={{ fontSize: 11 }}
-                                    />
-                                    <Tooltip
-                                        content={({ payload }) => {
-                                            if (!payload || !payload[0]) return null;
-                                            const data = payload[0].payload as {
-                                                title: string;
-                                                estimationDays: number;
-                                                difficulty: number;
-                                                priority: string;
-                                                tags: string;
-                                            };
-                                            return (
-                                                <div className="bg-background border rounded-lg p-2 shadow-lg">
-                                                    <p className="font-semibold text-xs">{data.title}</p>
-                                                    <p className="text-xs text-muted-foreground">Giorni: {data.estimationDays}</p>
-                                                    <p className="text-xs text-muted-foreground">Difficulty: {data.difficulty}</p>
-                                                    <Badge className={getPrioritySolidClass(data.priority) + ' text-xs'}>
-                                                        {data.priority}
-                                                    </Badge>
-                                                </div>
-                                            );
-                                        }}
-                                    />
-                                    <Scatter name="High" data={scatterData.filter(d => d.priority === 'High')} fill={getPrioritySolidColor('High')} />
-                                    <Scatter name="Med" data={scatterData.filter(d => d.priority === 'Med')} fill={getPrioritySolidColor('Med')} />
-                                    <Scatter name="Low" data={scatterData.filter(d => d.priority === 'Low')} fill={getPrioritySolidColor('Low')} />
-                                </ScatterChart>
-                            </ResponsiveContainer>
-                        </CardContent>
-                    </Card>
-
-                    {/* Mix difficoltà compatto */}
-                    <Card>
-                        <CardHeader className="pb-2">
-                            <CardTitle className="text-sm">Mix Difficoltà</CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            <div className="space-y-1.5 text-xs">
-                                {Object.entries(kpis.difficultyMix).map(([diff, count]) => (
-                                    <div key={diff} className="flex justify-between">
-                                        <span className="text-muted-foreground capitalize">{diff}</span>
-                                        <span className="font-semibold">{count} req</span>
-                                    </div>
-                                ))}
+                        <CardContent className="flex-1 p-0 px-1 pb-1">
+                            <div className="w-full h-full min-h-[140px]">
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <ScatterChart margin={{ top: 5, right: 10, bottom: 15, left: 10 }}>
+                                        <CartesianGrid strokeDasharray="3 3" />
+                                        <XAxis
+                                            type="number"
+                                            dataKey="difficulty"
+                                            name="Difficulty"
+                                            domain={[0, 6]}
+                                            tick={{ fontSize: 11 }}
+                                        />
+                                        <YAxis
+                                            type="number"
+                                            dataKey="estimationDays"
+                                            name="Giorni/uomo"
+                                            tick={{ fontSize: 11 }}
+                                        />
+                                        <Tooltip
+                                            content={({ payload }) => {
+                                                if (!payload || !payload[0]) return null;
+                                                const data = payload[0].payload as {
+                                                    title: string;
+                                                    estimationDays: number;
+                                                    difficulty: number;
+                                                    priority: string;
+                                                    tags: string;
+                                                };
+                                                return (
+                                                    <div className="bg-background border rounded-lg p-2 shadow-lg">
+                                                        <p className="font-semibold text-xs">{data.title}</p>
+                                                        <p className="text-xs text-muted-foreground">Giorni: {data.estimationDays}</p>
+                                                        <p className="text-xs text-muted-foreground">Difficulty: {data.difficulty}</p>
+                                                        <Badge className={getPrioritySolidClass(data.priority) + ' text-xs'}>
+                                                            {data.priority}
+                                                        </Badge>
+                                                    </div>
+                                                );
+                                            }}
+                                        />
+                                        <Scatter name="High" data={scatterData.filter(d => d.priority === 'High')} fill={getPrioritySolidColor('High')} />
+                                        <Scatter name="Med" data={scatterData.filter(d => d.priority === 'Med')} fill={getPrioritySolidColor('Med')} />
+                                        <Scatter name="Low" data={scatterData.filter(d => d.priority === 'Low')} fill={getPrioritySolidColor('Low')} />
+                                    </ScatterChart>
+                                </ResponsiveContainer>
                             </div>
                         </CardContent>
                     </Card>
 
-                    {/* Top Tags come pills compatte */}
-                    <Card>
-                        <CardHeader className="pb-2">
-                            <CardTitle className="text-sm">Top Tags</CardTitle>
+                    {/* Treemap */}
+                    <Card className="flex flex-col">
+                        <CardHeader className="pb-1 px-3 pt-2">
+                            <CardTitle className="text-sm">Treemap Requisiti</CardTitle>
                         </CardHeader>
-                        <CardContent>
-                            <div className="flex flex-wrap gap-1.5">
-                                {tagChartData.slice(0, 8).map((tag) => {
-                                    const maxEffort = Math.max(...tagChartData.map(t => t.total));
-                                    const intensity = tag.total / maxEffort;
-                                    const bgOpacity = Math.round(30 + intensity * 50); // 30-80%
-
-                                    return (
-                                        <div
-                                            key={tag.tag}
-                                            className="group relative"
-                                        >
-                                            <Badge
-                                                variant="outline"
-                                                className="text-xs cursor-help transition-all hover:scale-105"
-                                                style={{
-                                                    backgroundColor: `hsl(var(--primary) / ${bgOpacity}%)`,
-                                                    borderColor: `hsl(var(--primary) / 80%)`
-                                                }}
-                                            >
-                                                {tag.tag}
-                                                <span className="ml-1 font-semibold">{Math.round(tag.total)}</span>
-                                            </Badge>
-                                            {/* Tooltip al hover */}
-                                            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 hidden group-hover:block z-10 w-max">
-                                                <div className="bg-popover text-popover-foreground border rounded-md shadow-lg p-2 text-xs">
-                                                    <div className="font-semibold mb-1">{tag.tag}</div>
-                                                    <div className="space-y-0.5">
-                                                        <div className="flex items-center gap-2">
-                                                            <Badge className={getPrioritySolidClass('High') + ' text-[10px] py-0'}>H</Badge>
-                                                            <span>{tag.High.toFixed(1)}gg</span>
-                                                        </div>
-                                                        <div className="flex items-center gap-2">
-                                                            <Badge className={getPrioritySolidClass('Med') + ' text-[10px] py-0'}>M</Badge>
-                                                            <span>{tag.Med.toFixed(1)}gg</span>
-                                                        </div>
-                                                        <div className="flex items-center gap-2">
-                                                            <Badge className={getPrioritySolidClass('Low') + ' text-[10px] py-0'}>L</Badge>
-                                                            <span>{tag.Low.toFixed(1)}gg</span>
-                                                        </div>
-                                                        <Separator className="my-1" />
-                                                        <div className="font-semibold">Tot: {tag.total.toFixed(1)}gg</div>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    );
-                                })}
+                        <CardContent className="flex-1 p-0 px-1 pb-1">
+                            <div className="w-full h-full min-h-[140px]">
+                                <TreemapView
+                                    requirements={filteredReqs.map(r => ({
+                                        requirement: r.requirement,
+                                        estimateDays: r.estimationDays,
+                                        hasEstimate: r.estimate !== null
+                                    }))}
+                                    colorBy="priority"
+                                    onSelectRequirement={() => { }}
+                                />
                             </div>
                         </CardContent>
                     </Card>
@@ -582,21 +579,21 @@ export function DashboardView({ list, requirements, onBack }: DashboardViewProps
 
                 {/* Colonna destra: Pannello filtri compatto desktop (1 colonna) */}
                 <div className="hidden lg:block lg:col-span-1">
-                    <Card className="sticky top-4">
-                        <CardHeader className="pb-3">
+                    <Card className="sticky top-4 h-fit">
+                        <CardHeader className="pb-2 px-3 pt-3">
                             <CardTitle className="text-sm">Controlli</CardTitle>
                         </CardHeader>
-                        <CardContent className="p-0 pb-3">
+                        <CardContent className="p-0 pb-2">
                             <Tabs defaultValue="scenario" className="w-full">
-                                <TabsList className="grid w-full grid-cols-2 h-8 mx-3">
-                                    <TabsTrigger value="scenario" className="text-xs">Scenario</TabsTrigger>
-                                    <TabsTrigger value="filtri" className="text-xs">Filtri</TabsTrigger>
+                                <TabsList className="grid w-full grid-cols-2 h-7 mx-3">
+                                    <TabsTrigger value="scenario" className="text-xs py-1">Scenario</TabsTrigger>
+                                    <TabsTrigger value="filtri" className="text-xs py-1">Filtri</TabsTrigger>
                                 </TabsList>
 
-                                <TabsContent value="scenario" className="space-y-3 mt-3 px-3">
+                                <TabsContent value="scenario" className="space-y-2 mt-2 px-3">
                                     {/* Start date */}
                                     <div>
-                                        <Label htmlFor="startDate" className="flex items-center gap-1.5 text-xs mb-1">
+                                        <Label htmlFor="startDate" className="flex items-center gap-1.5 text-xs mb-0.5">
                                             <Calendar className="h-3 w-3" />
                                             Start date
                                         </Label>
@@ -605,13 +602,13 @@ export function DashboardView({ list, requirements, onBack }: DashboardViewProps
                                             type="date"
                                             value={filters.startDate}
                                             onChange={(e) => setFilters({ ...filters, startDate: e.target.value })}
-                                            className="h-8 text-xs"
+                                            className="h-7 text-xs"
                                         />
                                     </div>
 
                                     {/* N sviluppatori */}
                                     <div>
-                                        <Label htmlFor="nDevelopers" className="flex items-center gap-1.5 text-xs mb-1">
+                                        <Label htmlFor="nDevelopers" className="flex items-center gap-1.5 text-xs mb-0.5">
                                             <Users className="h-3 w-3" />
                                             N° sviluppatori
                                         </Label>
@@ -621,23 +618,24 @@ export function DashboardView({ list, requirements, onBack }: DashboardViewProps
                                             min="1"
                                             value={filters.nDevelopers}
                                             onChange={(e) => setFilters({ ...filters, nDevelopers: parseInt(e.target.value) || 1 })}
-                                            className="h-8 text-xs"
+                                            className="h-7 text-xs"
                                         />
                                     </div>
 
                                     {/* Escludi weekend */}
-                                    <div className="flex items-center space-x-2">
+                                    <div className="flex items-center space-x-2 py-1">
                                         <Checkbox
                                             id="excludeWeekends"
                                             checked={filters.excludeWeekends}
                                             onCheckedChange={(checked) => setFilters({ ...filters, excludeWeekends: checked as boolean })}
+                                            className="h-3.5 w-3.5"
                                         />
                                         <Label htmlFor="excludeWeekends" className="text-xs">Escludi weekend</Label>
                                     </div>
 
                                     {/* Festività */}
                                     <div>
-                                        <Label htmlFor="holidays" className="text-xs mb-1 block">Festività (YYYY-MM-DD)</Label>
+                                        <Label htmlFor="holidays" className="text-xs mb-0.5 block">Festività (YYYY-MM-DD)</Label>
                                         <Input
                                             id="holidays"
                                             type="text"
@@ -650,24 +648,25 @@ export function DashboardView({ list, requirements, onBack }: DashboardViewProps
                                                     .filter(h => h.length > 0);
                                                 setFilters({ ...filters, holidays: holidayList });
                                             }}
-                                            className="h-8 text-xs"
+                                            className="h-7 text-xs"
                                         />
                                     </div>
                                 </TabsContent>
 
-                                <TabsContent value="filtri" className="space-y-3 mt-3 px-3">
+                                <TabsContent value="filtri" className="space-y-2 mt-2 px-3">
                                     {/* Filtro priorità */}
                                     <div>
-                                        <Label className="text-xs mb-2 block">Filtro Priorità</Label>
-                                        <div className="space-y-2">
+                                        <Label className="text-xs mb-1 block">Filtro Priorità</Label>
+                                        <div className="space-y-1.5">
                                             <div className="flex items-center space-x-2">
                                                 <Checkbox
                                                     id="priority-high"
                                                     checked={filters.priorities.includes('High')}
                                                     onCheckedChange={() => handleTogglePriority('High')}
+                                                    className="h-3.5 w-3.5"
                                                 />
                                                 <Label htmlFor="priority-high" className="flex items-center gap-2 text-xs">
-                                                    <Badge className={getPrioritySolidClass('High')}>H</Badge>
+                                                    <Badge className={getPrioritySolidClass('High') + ' text-[10px] px-1.5 py-0'}>H</Badge>
                                                     <span>{kpis.priorityMix.High} req</span>
                                                 </Label>
                                             </div>
@@ -676,9 +675,10 @@ export function DashboardView({ list, requirements, onBack }: DashboardViewProps
                                                     id="priority-med"
                                                     checked={filters.priorities.includes('Med')}
                                                     onCheckedChange={() => handleTogglePriority('Med')}
+                                                    className="h-3.5 w-3.5"
                                                 />
                                                 <Label htmlFor="priority-med" className="flex items-center gap-2 text-xs">
-                                                    <Badge className={getPrioritySolidClass('Med')}>M</Badge>
+                                                    <Badge className={getPrioritySolidClass('Med') + ' text-[10px] px-1.5 py-0'}>M</Badge>
                                                     <span>{kpis.priorityMix.Med} req</span>
                                                 </Label>
                                             </div>
@@ -687,9 +687,10 @@ export function DashboardView({ list, requirements, onBack }: DashboardViewProps
                                                     id="priority-low"
                                                     checked={filters.priorities.includes('Low')}
                                                     onCheckedChange={() => handleTogglePriority('Low')}
+                                                    className="h-3.5 w-3.5"
                                                 />
                                                 <Label htmlFor="priority-low" className="flex items-center gap-2 text-xs">
-                                                    <Badge className={getPrioritySolidClass('Low')}>L</Badge>
+                                                    <Badge className={getPrioritySolidClass('Low') + ' text-[10px] px-1.5 py-0'}>L</Badge>
                                                     <span>{kpis.priorityMix.Low} req</span>
                                                 </Label>
                                             </div>

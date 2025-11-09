@@ -126,8 +126,8 @@
     --destructive: 351.3 94.52% 71.37%;
     --destructive-foreground: 213.33 29.03% 6.08%;
 
-    --border: 215.17 28.71% 19.8%;
-    --input: 215.17 28.71% 19.8%;
+    --border: 215.17 28.71% 25.8%;
+    --input: 215.17 28.71% 25.8%;
     --ring: 211.7 96.36% 78.43%;
 
     --sidebar-background: var(--surface);
@@ -179,5 +179,27 @@
     @apply bg-background text-foreground;
     background-color: hsl(var(--background));
     color: hsl(var(--foreground));
+  }
+
+  /* Accessibilità: Riduzione movimento */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+
+  /* Accessibilità: Alto contrasto */
+  @media (prefers-contrast: more) {
+    :root[data-theme='dark'],
+    .dark {
+      --border: 215.17 28.71% 32%;
+      --text-muted: 211.3 15.44% 82%;
+      --text-subtle: 211.11 11.69% 70%;
+    }
   }
 }

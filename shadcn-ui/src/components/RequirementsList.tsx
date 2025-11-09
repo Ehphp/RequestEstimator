@@ -9,15 +9,17 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyState } from '@/components/ui/empty-state';
 import { useToast } from '@/hooks/use-toast';
+import { FilterPopover } from './requirements/FilterPopover';
+import { RequirementFormFields, RequirementFormStateBase } from './requirements/RequirementFormFields';
+import { PRIORITY_OPTIONS, STATE_OPTIONS } from '@/constants/requirements';
 import { List, Requirement } from '../types';
 import { saveRequirement, generateId, getLatestEstimates } from '../lib/storage';
 import { logger } from '@/lib/logger';
 import { DashboardView } from './DashboardView';
+import { useSearchParams } from 'react-router-dom';
 
 interface RequirementsListProps {
   list: List;
@@ -27,14 +29,7 @@ interface RequirementsListProps {
   onRequirementsChange: () => void;
 }
 
-type RequirementFormState = {
-  title: string;
-  description: string;
-  business_owner: string;
-  priority: Requirement['priority'];
-  state: Requirement['state'];
-  labels: string;
-};
+type RequirementFormState = RequirementFormStateBase;
 
 type RequirementFilters = {
   search: string;
@@ -46,6 +41,7 @@ type RequirementFilters = {
 };
 
 type SortOption = 'created-desc' | 'created-asc' | 'priority' | 'title' | 'estimate-desc' | 'estimate-asc';
+type TabValue = 'list' | 'dashboard';
 
 type RequirementWithMeta = {
   requirement: Requirement;
@@ -53,19 +49,6 @@ type RequirementWithMeta = {
   hasEstimate: boolean;
   estimateDays: number;
 };
-
-const PRIORITY_OPTIONS: { value: Requirement['priority']; label: string }[] = [
-  { value: 'High', label: 'Alta' },
-  { value: 'Med', label: 'Media' },
-  { value: 'Low', label: 'Bassa' }
-];
-
-const STATE_OPTIONS: { value: Requirement['state']; label: string }[] = [
-  { value: 'Proposed', label: 'Proposto' },
-  { value: 'Selected', label: 'Selezionato' },
-  { value: 'Scheduled', label: 'Pianificato' },
-  { value: 'Done', label: 'Completato' }
-];
 
 const ESTIMATE_OPTIONS = [
   { value: 'all', label: 'Tutti' },
@@ -112,7 +95,7 @@ export function RequirementsList({
   onRequirementsChange
 }: RequirementsListProps) {
   const { toast } = useToast();
-  const titleInputRef = useRef<HTMLInputElement>(null);
+  const titleInputRef = useRef<HTMLInputElement>(null) as React.RefObject<HTMLInputElement>;
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [newRequirement, setNewRequirement] = useState<RequirementFormState>({
     title: '',
@@ -122,11 +105,27 @@ export function RequirementsList({
     state: 'Proposed' as const,
     labels: ''
   });
+  const handleNewRequirementFieldChange = <K extends keyof RequirementFormState>(field: K, value: RequirementFormState[K]) => {
+    setNewRequirement((prev) => ({ ...prev, [field]: value }));
+  };
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
   const [estimatesMap, setEstimatesMap] = useState<Record<string, { totalDays: number; updatedOn?: string } | null>>({});
   const [estimatesLoaded, setEstimatesLoaded] = useState(false);
   const [filters, setFilters] = useState<RequirementFilters>(INITIAL_FILTERS);
   const [sortOption, setSortOption] = useState<SortOption>('created-desc');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tabParam = searchParams.get('tab');
+  const activeTab: TabValue = tabParam === 'dashboard' ? 'dashboard' : 'list';
+  const handleTabChange = (value: string) => {
+    const nextTab: TabValue = value === 'dashboard' ? 'dashboard' : 'list';
+    const params = new URLSearchParams(searchParams);
+    if (nextTab === 'list') {
+      params.delete('tab');
+    } else {
+      params.set('tab', nextTab);
+    }
+    setSearchParams(params, { replace: true });
+  };
 
   // Focus management for dialog
   useEffect(() => {
@@ -495,20 +494,21 @@ export function RequirementsList({
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-4 bg-gradient-to-r from-primary/5 via-primary/10 to-transparent p-4 rounded-lg border">
-        <Button variant="outline" onClick={onBack} className="hover:bg-background">
-          <ArrowLeft className="h-4 w-4 mr-2" />
-          Torna alle Liste
-        </Button>
-        <div className="flex-1">
-          <h1 className="text-3xl font-bold bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-transparent">
-            {list.name}
-          </h1>
-          <p className="text-muted-foreground text-sm mt-1">{list.description}</p>
+      {/* Breadcrumb con metriche e azione */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <Button variant="ghost" onClick={onBack} className="gap-2">
+            <ArrowLeft className="h-4 w-4" />
+            <span className="text-muted-foreground">Liste</span>
+            <span className="text-muted-foreground">/</span>
+            <span className="font-semibold">{list.name}</span>
+          </Button>
+          <span className="text-muted-foreground">•</span>
+          <span className="text-sm text-muted-foreground">{list.description}</span>
         </div>
         <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
           <DialogTrigger asChild>
-            <Button className="bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 shadow-md">
+            <Button>
               <Plus className="h-4 w-4 mr-2" />
               Nuovo Requisito
             </Button>
@@ -518,91 +518,14 @@ export function RequirementsList({
               <DialogTitle>Aggiungi Nuovo Requisito</DialogTitle>
             </DialogHeader>
             <div className="space-y-4">
-              <div>
-                <Label htmlFor="title">Titolo</Label>
-                <Input
-                  ref={titleInputRef}
-                  id="title"
-                  value={newRequirement.title}
-                  onChange={(e) => setNewRequirement({ ...newRequirement, title: e.target.value })}
-                  placeholder="Titolo del requisito"
-                />
-              </div>
-
-              <div>
-                <Label htmlFor="description">Descrizione</Label>
-                <Textarea
-                  id="description"
-                  value={newRequirement.description}
-                  onChange={(e) => setNewRequirement({ ...newRequirement, description: e.target.value })}
-                  placeholder="Descrizione dettagliata del requisito"
-                  rows={3}
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="business_owner">Business Owner</Label>
-                  <Input
-                    id="business_owner"
-                    value={newRequirement.business_owner}
-                    onChange={(e) => setNewRequirement({ ...newRequirement, business_owner: e.target.value })}
-                    placeholder="email@company.com"
-                  />
-                </div>
-
-                <div>
-                  <Label htmlFor="labels">Etichette</Label>
-                  <Input
-                    id="labels"
-                    value={newRequirement.labels}
-                    onChange={(e) => setNewRequirement({ ...newRequirement, labels: e.target.value })}
-                    placeholder="tag1,tag2,tag3"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="priority">Priorità</Label>
-                  <Select
-                    value={newRequirement.priority}
-                    onValueChange={(value: Requirement['priority']) =>
-                      setNewRequirement({ ...newRequirement, priority: value })
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="High">Alta</SelectItem>
-                      <SelectItem value="Med">Media</SelectItem>
-                      <SelectItem value="Low">Bassa</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div>
-                  <Label htmlFor="state">Stato</Label>
-                  <Select
-                    value={newRequirement.state}
-                    onValueChange={(value: Requirement['state']) =>
-                      setNewRequirement({ ...newRequirement, state: value })
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Proposed">Proposto</SelectItem>
-                      <SelectItem value="Selected">Selezionato</SelectItem>
-                      <SelectItem value="Scheduled">Pianificato</SelectItem>
-                      <SelectItem value="Done">Completato</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
+              <RequirementFormFields
+                formData={newRequirement}
+                onChange={handleNewRequirementFieldChange}
+                titleRef={titleInputRef}
+                titlePlaceholder="Titolo del requisito"
+                descriptionPlaceholder="Descrizione dettagliata del requisito"
+                labelsPlaceholder="tag1,tag2,tag3"
+              />
               <div className="flex justify-end gap-2">
                 <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>
                   Annulla
@@ -617,13 +540,21 @@ export function RequirementsList({
       </div>
 
       {/* Tabs per Lista/Dashboard */}
-      <Tabs defaultValue="dashboard" className="w-full">
+      <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
         <TabsList className="grid w-full grid-cols-2 max-w-md mb-4 h-11 bg-muted/50">
-          <TabsTrigger value="list" className="flex items-center gap-2 data-[state=active]:bg-background data-[state=active]:shadow-md">
+          <TabsTrigger
+            value="list"
+            className="flex items-center gap-2 data-[state=active]:bg-background data-[state=active]:shadow-md"
+            aria-current={activeTab === 'list' ? 'page' : undefined}
+          >
             <ListIcon className="h-4 w-4" />
             Lista Requisiti
           </TabsTrigger>
-          <TabsTrigger value="dashboard" className="flex items-center gap-2 data-[state=active]:bg-background data-[state=active]:shadow-md">
+          <TabsTrigger
+            value="dashboard"
+            className="flex items-center gap-2 data-[state=active]:bg-background data-[state=active]:shadow-md"
+            aria-current={activeTab === 'dashboard' ? 'page' : undefined}
+          >
             <BarChart3 className="h-4 w-4" />
             Dashboard Stima
           </TabsTrigger>
@@ -696,108 +627,48 @@ export function RequirementsList({
                   />
                 </div>
 
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button variant="outline" size="sm" className="justify-between w-[160px]">
-                      <span>Priorità</span>
-                      {filters.priorities.length > 0 && (
-                        <Badge variant="secondary">{filters.priorities.length}</Badge>
-                      )}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-64 space-y-3">
-                    <div className="text-sm font-medium">Priorità</div>
-                    <div className="space-y-2">
-                      {PRIORITY_OPTIONS.map((option) => (
-                        <label key={option.value} className="flex items-center gap-2 text-sm">
-                          <Checkbox
-                            checked={filters.priorities.includes(option.value)}
-                            onCheckedChange={() => handleTogglePriority(option.value)}
-                          />
-                          <span>{option.label}</span>
-                        </label>
-                      ))}
-                    </div>
-                  </PopoverContent>
-                </Popover>
+                <FilterPopover
+                  buttonLabel="Priorità"
+                  title="Priorità"
+                  options={PRIORITY_OPTIONS}
+                  selectedValues={filters.priorities}
+                  onToggle={(value) => handleTogglePriority(value as Requirement['priority'])}
+                  triggerClassName="w-[160px]"
+                />
 
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button variant="outline" size="sm" className="justify-between w-[170px]">
-                      <span>Stato</span>
-                      {filters.states.length > 0 && (
-                        <Badge variant="secondary">{filters.states.length}</Badge>
-                      )}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-64 space-y-3">
-                    <div className="text-sm font-medium">Stato del requisito</div>
-                    <div className="space-y-2">
-                      {STATE_OPTIONS.map((option) => (
-                        <label key={option.value} className="flex items-center gap-2 text-sm">
-                          <Checkbox
-                            checked={filters.states.includes(option.value)}
-                            onCheckedChange={() => handleToggleState(option.value)}
-                          />
-                          <span>{option.label}</span>
-                        </label>
-                      ))}
-                    </div>
-                  </PopoverContent>
-                </Popover>
+                <FilterPopover
+                  buttonLabel="Stato"
+                  title="Stato del requisito"
+                  options={STATE_OPTIONS}
+                  selectedValues={filters.states}
+                  onToggle={(value) => handleToggleState(value as Requirement['state'])}
+                  triggerClassName="w-[170px]"
+                />
 
                 {ownerOptions.length > 0 && (
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button variant="outline" size="sm" className="justify-between w-[190px]">
-                        <span>Business Owner</span>
-                        {filters.owners.length > 0 && (
-                          <Badge variant="secondary">{filters.owners.length}</Badge>
-                        )}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-72 space-y-3">
-                      <div className="text-sm font-medium">Business Owner</div>
-                      <div className="max-h-64 overflow-y-auto pr-2 space-y-2">
-                        {ownerOptions.map((owner) => (
-                          <label key={owner} className="flex items-center gap-2 text-sm">
-                            <Checkbox
-                              checked={filters.owners.includes(owner)}
-                              onCheckedChange={() => handleToggleOwner(owner)}
-                            />
-                            <span>{owner}</span>
-                          </label>
-                        ))}
-                      </div>
-                    </PopoverContent>
-                  </Popover>
+                  <FilterPopover
+                    buttonLabel="Business Owner"
+                    title="Business Owner"
+                    options={ownerOptions.map((owner) => ({ value: owner, label: owner }))}
+                    selectedValues={filters.owners}
+                    onToggle={handleToggleOwner}
+                    triggerClassName="w-[190px]"
+                    scrollable
+                    contentClassName="w-72"
+                  />
                 )}
 
                 {labelOptions.length > 0 && (
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button variant="outline" size="sm" className="justify-between w-[160px]">
-                        <span>Etichette</span>
-                        {filters.labels.length > 0 && (
-                          <Badge variant="secondary">{filters.labels.length}</Badge>
-                        )}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-64 space-y-3">
-                      <div className="text-sm font-medium">Etichette</div>
-                      <div className="max-h-60 overflow-y-auto pr-2 space-y-2">
-                        {labelOptions.map((label) => (
-                          <label key={label} className="flex items-center gap-2 text-sm capitalize">
-                            <Checkbox
-                              checked={filters.labels.includes(label)}
-                              onCheckedChange={() => handleToggleLabel(label)}
-                            />
-                            <span>{label}</span>
-                          </label>
-                        ))}
-                      </div>
-                    </PopoverContent>
-                  </Popover>
+                  <FilterPopover
+                    buttonLabel="Etichette"
+                    title="Etichette"
+                    options={labelOptions.map((label) => ({ value: label, label }))}
+                    selectedValues={filters.labels}
+                    onToggle={handleToggleLabel}
+                    triggerClassName="w-[160px]"
+                    scrollable
+                    optionClassName="capitalize"
+                  />
                 )}
 
                 <Select
@@ -1049,7 +920,7 @@ export function RequirementsList({
           <DashboardView
             list={list}
             requirements={visibleRequirementEntities}
-            onBack={() => { }}
+            onBack={onBack}
           />
         </TabsContent>
       </Tabs>

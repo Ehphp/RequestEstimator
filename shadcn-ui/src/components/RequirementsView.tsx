@@ -4,16 +4,13 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { List, Requirement, Estimate, DefaultSource } from '../types';
 import { getListById, getRequirementsByListId, saveRequirement, deleteRequirement, getLatestEstimates } from '../lib/storage';
 import { getRequirementDefaults } from '../lib/defaults';
 import { getPriorityColor, getStateColor } from '@/lib/utils';
 import { DefaultPill } from './DefaultPill';
+import { RequirementFormFields, RequirementFormStateBase } from './requirements/RequirementFormFields';
 import { EstimateEditor } from './EstimateEditor';
 import { DashboardView } from './DashboardView';
 
@@ -205,6 +202,29 @@ export function RequirementsView({ listId, onBack }: RequirementsViewProps) {
     }
   };
 
+  const handleFormFieldChange = <K extends keyof RequirementFormStateBase>(field: K, value: RequirementFormStateBase[K]) => {
+    setFormData(prev => ({ ...prev, [field]: value }));
+  };
+
+  const renderDefaultPill = (field: string) => {
+    if (editingRequirement) {
+      return null;
+    }
+
+    const source = defaultSources.find((s) => s.field === field);
+    if (!source) {
+      return null;
+    }
+
+    return (
+      <DefaultPill
+        source={source.source}
+        isOverridden={overriddenFields[field] || false}
+        onToggleOverride={() => handleToggleOverride(field)}
+      />
+    );
+  };
+
   if (estimatingRequirement) {
     return (
       <EstimateEditor
@@ -220,22 +240,32 @@ export function RequirementsView({ listId, onBack }: RequirementsViewProps) {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-4">
-        <Button variant="outline" onClick={onBack}>
-          <ArrowLeft className="h-4 w-4 mr-2" />
-          Torna alle Liste
-        </Button>
-        <div className="flex-1">
-          <h1 className="text-3xl font-bold">{list?.name}</h1>
-          <p className="text-muted-foreground">
-            {list?.owner} • {list?.period} • {requirements.length} requisiti
-            {list?.preset_key && (
-              <Badge variant="outline" className="ml-2">
-                <Sparkles className="h-3 w-3 mr-1" />
-                Default intelligenti attivi
+      {/* Breadcrumb con metriche e azione */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <Button variant="ghost" onClick={onBack} className="gap-2">
+            <ArrowLeft className="h-4 w-4" />
+            <span className="text-muted-foreground">Liste</span>
+            <span className="text-muted-foreground">/</span>
+            <span className="font-semibold">{list?.name}</span>
+          </Button>
+          <span className="text-muted-foreground">•</span>
+          <span className="flex items-center gap-2 text-sm">
+            <span className="font-semibold">{requirements.length}</span> requisiti
+          </span>
+          <span className="text-muted-foreground">•</span>
+          <span className="text-sm text-muted-foreground">{list?.owner}</span>
+          <span className="text-muted-foreground">•</span>
+          <span className="text-sm text-muted-foreground">{list?.period}</span>
+          {list?.preset_key && (
+            <>
+              <span className="text-muted-foreground">•</span>
+              <Badge variant="outline" className="gap-1">
+                <Sparkles className="h-3 w-3" />
+                Default intelligenti
               </Badge>
-            )}
-          </p>
+            </>
+          )}
         </div>
         <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
           <DialogTrigger asChild>
@@ -249,125 +279,21 @@ export function RequirementsView({ listId, onBack }: RequirementsViewProps) {
               <DialogTitle>{editingRequirement ? 'Modifica Requisito' : 'Crea Nuovo Requisito'}</DialogTitle>
             </DialogHeader>
             <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <Label htmlFor="title">Titolo</Label>
-                <Input
-                  id="title"
-                  value={formData.title}
-                  onChange={(e) => handleTitleChange(e.target.value)}
-                  placeholder="Titolo del requisito (i default si aggiornano automaticamente)"
-                  required
-                />
-              </div>
-
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <Label htmlFor="description">Descrizione</Label>
-                  {!editingRequirement && defaultSources.find(s => s.field === 'description') && (
-                    <DefaultPill
-                      source={defaultSources.find(s => s.field === 'description')!.source}
-                      isOverridden={overriddenFields.description || false}
-                      onToggleOverride={() => handleToggleOverride('description')}
-                    />
-                  )}
-                </div>
-                <Textarea
-                  id="description"
-                  value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  placeholder="Descrizione dettagliata del requisito"
-                  rows={4}
-                  required
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <Label htmlFor="priority">Priorità</Label>
-                    {!editingRequirement && defaultSources.find(s => s.field === 'priority') && (
-                      <DefaultPill
-                        source={defaultSources.find(s => s.field === 'priority')!.source}
-                        isOverridden={overriddenFields.priority || false}
-                        onToggleOverride={() => handleToggleOverride('priority')}
-                      />
-                    )}
-                  </div>
-                  <Select
-                    value={formData.priority}
-                    onValueChange={(value: Requirement['priority']) => setFormData({ ...formData, priority: value })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Low">Low</SelectItem>
-                      <SelectItem value="Med">Med</SelectItem>
-                      <SelectItem value="High">High</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <Label htmlFor="state">Stato</Label>
-                  <Select
-                    value={formData.state}
-                    onValueChange={(value: Requirement['state']) => setFormData({ ...formData, state: value })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Proposed">Proposed</SelectItem>
-                      <SelectItem value="Selected">Selected</SelectItem>
-                      <SelectItem value="Scheduled">Scheduled</SelectItem>
-                      <SelectItem value="Done">Done</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="business_owner">Business Owner</Label>
-                  <Input
-                    id="business_owner"
-                    value={formData.business_owner}
-                    onChange={(e) => setFormData({ ...formData, business_owner: e.target.value })}
-                    placeholder="Nome del business owner"
-                    required
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="estimator">Estimator</Label>
-                  <Input
-                    id="estimator"
-                    value={formData.estimator}
-                    onChange={(e) => setFormData({ ...formData, estimator: e.target.value })}
-                    placeholder="Chi farà la stima"
-                    required
-                  />
-                </div>
-              </div>
-
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <Label htmlFor="labels">Labels (separati da virgola)</Label>
-                  {!editingRequirement && defaultSources.find(s => s.field === 'labels') && (
-                    <DefaultPill
-                      source={defaultSources.find(s => s.field === 'labels')!.source}
-                      isOverridden={overriddenFields.labels || false}
-                      onToggleOverride={() => handleToggleOverride('labels')}
-                    />
-                  )}
-                </div>
-                <Input
-                  id="labels"
-                  value={formData.labels}
-                  onChange={(e) => setFormData({ ...formData, labels: e.target.value })}
-                  placeholder="es. HR, Notifiche, Critical"
-                />
-              </div>
-
+              <RequirementFormFields
+                formData={formData}
+                onChange={handleFormFieldChange}
+                onTitleChange={handleTitleChange}
+                includeEstimator
+                labelExtras={{
+                  description: renderDefaultPill('description'),
+                  priority: renderDefaultPill('priority'),
+                  labels: renderDefaultPill('labels')
+                }}
+                titlePlaceholder="Titolo del requisito (i default si aggiornano automaticamente)"
+                descriptionPlaceholder="Descrizione dettagliata del requisito"
+                labelsPlaceholder="es. HR, Notifiche, Critical"
+                labelsLabel="Labels (separati da virgola)"
+              />
               <div className="flex gap-2">
                 <Button type="submit" className="flex-1">
                   {editingRequirement ? 'Aggiorna' : 'Crea'}
@@ -524,7 +450,7 @@ export function RequirementsView({ listId, onBack }: RequirementsViewProps) {
             <DashboardView
               list={list}
               requirements={requirements}
-              onBack={() => { }}
+              onBack={onBack}
             />
           )}
         </TabsContent>

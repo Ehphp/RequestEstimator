@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Plus, FileText, Calendar, User, Tag, AlertCircle, Loader2, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import {
@@ -15,6 +15,8 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { ThemeToggle } from '@/components/ThemeToggle';
+import { useSearchParams } from 'react-router-dom';
+import { ListOverviewCard } from '@/components/lists/ListOverviewCard';
 import { List, Requirement } from '../types';
 import {
   getLists,
@@ -39,10 +41,45 @@ export default function Index() {
   const [deleteMetadataLoading, setDeleteMetadataLoading] = useState(false);
   const [pendingRequirementCount, setPendingRequirementCount] = useState<number | null>(null);
   const [deleteInProgress, setDeleteInProgress] = useState(false);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const listIdParam = searchParams.get('listId');
+  const reqIdParam = searchParams.get('reqId');
+
+  const updateSearchParams = useCallback(
+    (mutator: (params: URLSearchParams) => void) => {
+      const params = new URLSearchParams(searchParams);
+      mutator(params);
+      setSearchParams(params, { replace: true });
+    },
+    [searchParams, setSearchParams]
+  );
 
   useEffect(() => {
     loadLists();
   }, []);
+
+  useEffect(() => {
+    if (!listIdParam) {
+      if (selectedList) {
+        setSelectedList(null);
+        setRequirements([]);
+      }
+      return;
+    }
+
+    const matchedList = lists.find((list) => list.list_id === listIdParam);
+
+    if (matchedList) {
+      if (!selectedList || selectedList.list_id !== matchedList.list_id) {
+        setSelectedList(matchedList);
+      }
+    } else if (lists.length > 0) {
+      updateSearchParams((params) => {
+        params.delete('listId');
+        params.delete('reqId');
+      });
+    }
+  }, [listIdParam, lists, selectedList, updateSearchParams]);
 
   const loadLists = async (options?: { autoSelectFirst?: boolean }): Promise<List[]> => {
     const { autoSelectFirst = false } = options || {};
@@ -84,6 +121,31 @@ export default function Index() {
     }
   }, [selectedList]);
 
+  useEffect(() => {
+    if (!reqIdParam) {
+      if (selectedRequirement) {
+        setSelectedRequirement(null);
+      }
+      return;
+    }
+
+    if (requirements.length === 0) {
+      return;
+    }
+
+    const matchedRequirement = requirements.find((requirement) => requirement.req_id === reqIdParam);
+
+    if (matchedRequirement) {
+      if (!selectedRequirement || selectedRequirement.req_id !== matchedRequirement.req_id) {
+        setSelectedRequirement(matchedRequirement);
+      }
+    } else {
+      updateSearchParams((params) => {
+        params.delete('reqId');
+      });
+    }
+  }, [reqIdParam, requirements, selectedRequirement, updateSearchParams]);
+
   const handleCreateNewList = async () => {
     try {
       const newList: List = {
@@ -99,6 +161,11 @@ export default function Index() {
       await saveList(newList);
       await loadLists();
       setSelectedList(newList);
+      updateSearchParams((params) => {
+        params.set('listId', newList.list_id);
+        params.delete('reqId');
+        params.delete('tab');
+      });
     } catch (err) {
       logger.error('Error creating new list:', err);
       setError('Errore nella creazione della nuova lista.');
@@ -108,14 +175,25 @@ export default function Index() {
   const handleSelectList = (list: List) => {
     setSelectedList(list);
     setSelectedRequirement(null);
+    updateSearchParams((params) => {
+      params.set('listId', list.list_id);
+      params.delete('reqId');
+      params.delete('tab');
+    });
   };
 
   const handleSelectRequirement = (requirement: Requirement) => {
     setSelectedRequirement(requirement);
+    updateSearchParams((params) => {
+      params.set('reqId', requirement.req_id);
+    });
   };
 
   const handleBackToRequirements = () => {
     setSelectedRequirement(null);
+    updateSearchParams((params) => {
+      params.delete('reqId');
+    });
     // Reload requirements to get updated data
     if (selectedList) {
       loadRequirements(selectedList.list_id);
@@ -126,6 +204,11 @@ export default function Index() {
     setSelectedList(null);
     setSelectedRequirement(null);
     setRequirements([]);
+    updateSearchParams((params) => {
+      params.delete('listId');
+      params.delete('reqId');
+      params.delete('tab');
+    });
   };
 
   const openDeleteDialog = async (list: List) => {
@@ -158,13 +241,18 @@ export default function Index() {
     try {
       setDeleteInProgress(true);
       setError(null);
-      await deleteList(listPendingDeletion.list_id);
-      if (deletingSelectedList) {
-        setSelectedRequirement(null);
-        setSelectedList(null);
-        setRequirements([]);
-      }
-      await loadLists({ autoSelectFirst: !deletingSelectedList });
+        await deleteList(listPendingDeletion.list_id);
+        if (deletingSelectedList) {
+          setSelectedRequirement(null);
+          setSelectedList(null);
+          setRequirements([]);
+          updateSearchParams((params) => {
+            params.delete('listId');
+            params.delete('reqId');
+            params.delete('tab');
+          });
+        }
+        await loadLists({ autoSelectFirst: !deletingSelectedList });
       closeDeleteDialog();
     } catch (err) {
       logger.error('Error deleting list:', err);
@@ -256,53 +344,52 @@ export default function Index() {
         ) : (
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
             {lists.map((list) => (
-              <Card
+              <ListOverviewCard
                 key={list.list_id}
                 className="cursor-pointer hover:shadow-lg dark:hover:shadow-gray-900/50 transition-shadow dark:bg-gray-900/50 dark:border-gray-800"
                 onClick={() => handleSelectList(list)}
+                title={
+                  <span className="flex items-center gap-2">
+                    <FileText className="h-5 w-5" />
+                    {list.name}
+                  </span>
+                }
+                rightElement={
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      openDeleteDialog(list);
+                    }}
+                    aria-label={`Elimina ${list.name}`}
+                  >
+                    <Trash2 className="h-4 w-4 text-red-500 dark:text-red-400" />
+                  </Button>
+                }
+                contentClassName="space-y-3"
               >
-                <CardHeader>
-                  <CardTitle className="flex items-center justify-between gap-2">
-                    <span className="flex items-center gap-2">
-                      <FileText className="h-5 w-5" />
-                      {list.name}
-                    </span>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        openDeleteDialog(list);
-                      }}
-                      aria-label={`Elimina ${list.name}`}
-                    >
-                      <Trash2 className="h-4 w-4 text-red-500 dark:text-red-400" />
-                    </Button>
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-gray-600 dark:text-gray-400 text-sm mb-4 line-clamp-2">
-                    {list.description}
-                  </p>
+                <p className="text-gray-600 dark:text-gray-400 text-sm mb-4 line-clamp-2">
+                  {list.description}
+                </p>
 
-                  <div className="flex flex-wrap gap-2 text-xs text-gray-500 dark:text-gray-500">
-                    <div className="flex items-center gap-1">
-                      <Calendar className="h-3 w-3" />
-                      {new Date(list.created_on).toLocaleDateString('it-IT')}
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <User className="h-3 w-3" />
-                      {list.created_by?.split('@')[0] || 'Unknown'}
-                    </div>
-                    {list.preset_key && (
-                      <div className="flex items-center gap-1">
-                        <Tag className="h-3 w-3" />
-                        {list.preset_key}
-                      </div>
-                    )}
+                <div className="flex flex-wrap gap-2 text-xs text-gray-500 dark:text-gray-500">
+                  <div className="flex items-center gap-1">
+                    <Calendar className="h-3 w-3" />
+                    {new Date(list.created_on).toLocaleDateString('it-IT')}
                   </div>
-                </CardContent>
-              </Card>
+                  <div className="flex items-center gap-1">
+                    <User className="h-3 w-3" />
+                    {list.created_by?.split('@')[0] || 'Unknown'}
+                  </div>
+                  {list.preset_key && (
+                    <div className="flex items-center gap-1">
+                      <Tag className="h-3 w-3" />
+                      {list.preset_key}
+                    </div>
+                  )}
+                </div>
+              </ListOverviewCard>
             ))}
           </div>
         )}
