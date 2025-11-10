@@ -282,7 +282,7 @@ export function TreemapApexMultiSeries({
   listRequirementStats,
   onSelectList,
   onRequirementSelect,
-  containerHeight = 420,
+  containerHeight = 200,
   showLegend = true,
   className,
 }: TreemapApexMultiSeriesProps) {
@@ -326,9 +326,9 @@ export function TreemapApexMultiSeries({
         ? listPalette
         : [getPrioritySolidColor("High"), getPrioritySolidColor("Med"), getPrioritySolidColor("Low")];
 
-    const MIN_LABEL_PERCENTAGE = 1.5;
-    const SINGLE_LINE_PERCENTAGE = 3;
-    const FULL_DETAILS_PERCENTAGE = 8;
+    const MIN_LABEL_PERCENTAGE = 0.5;
+    const SINGLE_LINE_PERCENTAGE = 1.5;
+    const FULL_DETAILS_PERCENTAGE = 5.0;
 
     const options: ApexOptions = {
       chart: {
@@ -430,8 +430,8 @@ export function TreemapApexMultiSeries({
         },
       },
       stroke: {
-        colors: ["rgba(15,23,42,0.22)"],
-        width: 1,
+        colors: ["hsla(20, 2%, 26%, 0.93)"],
+        width: 3,
         lineCap: "round",
       },
       dataLabels: {
@@ -454,7 +454,7 @@ export function TreemapApexMultiSeries({
 
           const priorityLabel = PRIORITY_LABELS[dataPoint.priority];
           const stateLabel = STATE_LABELS[dataPoint.state];
-          return `${titleWithBadge}\n${dataPoint.y.toFixed(1)} gg - ${priorityLabel}\n${stateLabel}`;
+          return `${shortTitle}\n${dataPoint.y.toFixed(1)} gg `;
         },
       },
       colors: paletteForMode,
