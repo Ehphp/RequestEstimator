@@ -1,4 +1,4 @@
-import { useMemo, useRef } from "react";
+import { useMemo, useRef, useState } from "react";
 
 import Chart from "react-apexcharts";
 
@@ -140,6 +140,8 @@ type MultiSeriesDataPoint = {
 
   fillColor: string;
 
+  technologyFillColor: string;
+
   requirementId: string;
 
   priority: Requirement["priority"];
@@ -150,7 +152,7 @@ type MultiSeriesDataPoint = {
 
   state: Requirement["state"];
 
-  businessOwnerx: string;
+  businessOwner?: string;
 
   percentage: number;
 };
@@ -192,6 +194,8 @@ type TooltipCustomParams = {
     };
   };
 };
+
+type ColorMode = "technology" | "priority";
 
 interface TreemapApexMultiSeriesProps {
   lists: List[];
@@ -307,6 +311,8 @@ function prepareMultiSeriesData(
 
         y: safeValue,
 
+        technologyFillColor: treemapFillColor,
+
         fillColor: treemapFillColor,
 
         requirementId: req.reqId,
@@ -402,6 +408,8 @@ export function TreemapApexMultiSeries({
 
   const navigationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
+  const [colorMode, setColorMode] = useState<ColorMode>("technology");
+
   const DOUBLE_CLICK_DELAY = 400; // Aumentato da 300ms
 
   const NAVIGATION_DELAY = 2000; // Countdown 2 secondi
@@ -426,6 +434,26 @@ export function TreemapApexMultiSeries({
     }
 
     const { series, metadata } = prepared;
+
+    const chartSeries = series.map((serie) => ({
+      ...serie,
+      data: serie.data.map((point) => ({
+        ...point,
+        fillColor:
+          colorMode === "technology"
+            ? point.technologyFillColor
+            : point.priorityColor,
+      })),
+    }));
+
+    const paletteForMode =
+      colorMode === "technology"
+        ? metadata.map((meta) => meta.treemapFillColor)
+        : [
+            getPrioritySolidColor("High"),
+            getPrioritySolidColor("Med"),
+            getPrioritySolidColor("Low"),
+          ];
 
     // Soglie per visibilità label
 
@@ -539,7 +567,7 @@ export function TreemapApexMultiSeries({
                 const selectedListMeta = metadata[seriesIndex];
 
                 const selectedReqData =
-                  series[seriesIndex].data[dataPointIndex];
+                  chartSeries[seriesIndex].data[dataPointIndex];
 
                 if (selectedReqData?.requirementId && onRequirementSelect) {
                   onRequirementSelect(
@@ -625,7 +653,8 @@ export function TreemapApexMultiSeries({
 
           opts: { dataPointIndex: number; seriesIndex: number },
         ) {
-          const dataPoint = series[opts.seriesIndex]?.data[opts.dataPointIndex];
+          const dataPoint =
+            chartSeries[opts.seriesIndex]?.data[opts.dataPointIndex];
 
           if (!dataPoint) {
             return text;
@@ -671,7 +700,7 @@ export function TreemapApexMultiSeries({
         },
       },
 
-      colors: metadata.map((meta) => meta.treemapFillColor),
+      colors: paletteForMode,
 
       tooltip: {
         enabled: true,
@@ -896,7 +925,7 @@ export function TreemapApexMultiSeries({
     const legendEntries = [...technologyEntries, ...priorityEntries];
 
     return {
-      series,
+      series: chartSeries,
 
       options,
 
@@ -916,6 +945,8 @@ export function TreemapApexMultiSeries({
     onRequirementSelect,
 
     containerHeight,
+
+    colorMode,
   ]);
 
   if (series.length === 0) {
@@ -955,6 +986,29 @@ export function TreemapApexMultiSeries({
             (2s countdown)
           </span>
         </span>
+      </div>
+      <div className="text-center text-[10px] text-muted-foreground/70 px-4">
+        Riempimento pastello = Tecnologia - Badge [A/M/B] = Priorita
+      </div>
+      <div className="flex flex-wrap items-center justify-center gap-2 py-1">
+        <Button
+          type="button"
+          variant={colorMode === "technology" ? "secondary" : "ghost"}
+          size="sm"
+          className="h-6 px-2 text-[10px]"
+          onClick={() => setColorMode("technology")}
+        >
+          Palette Tecnologie
+        </Button>
+        <Button
+          type="button"
+          variant={colorMode === "priority" ? "secondary" : "ghost"}
+          size="sm"
+          className="h-6 px-2 text-[10px]"
+          onClick={() => setColorMode("priority")}
+        >
+          Palette Priorita
+        </Button>
       </div>
 
       {showLegend && legendEntries.length > 0 && (

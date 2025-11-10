@@ -21,6 +21,7 @@ export function RequirementDetailView({ requirement, list, onBack }: Requirement
     const [estimates, setEstimates] = useState<Estimate[]>([]);
     const [loading, setLoading] = useState(true);
     const [editMode, setEditMode] = useState(false);
+    const [selectedEstimate, setSelectedEstimate] = useState<Estimate | null>(null);
 
     useEffect(() => {
         loadEstimates();
@@ -60,8 +61,10 @@ export function RequirementDetailView({ requirement, list, onBack }: Requirement
             <EstimateEditor
                 requirement={requirement}
                 list={list}
+                selectedEstimate={selectedEstimate}
                 onBack={() => {
                     setEditMode(false);
+                    setSelectedEstimate(null);
                     loadEstimates(); // Ricarica stime dopo l'edit
                 }}
             />
@@ -517,6 +520,7 @@ export function RequirementDetailView({ requirement, list, onBack }: Requirement
                                                     key={estimate.estimate_id}
                                                     className={`p-2 rounded-lg border text-xs ${index === 0 ? 'border-primary/40 bg-gradient-to-r from-primary/10 to-primary/5' : 'border-border hover:bg-accent/50'} cursor-pointer transition-all hover:shadow-sm`}
                                                     onClick={() => {
+                                                        setSelectedEstimate(estimate);
                                                         setEditMode(true);
                                                     }}
                                                 >

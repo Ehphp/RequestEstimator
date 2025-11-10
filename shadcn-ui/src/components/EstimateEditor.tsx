@@ -27,9 +27,10 @@ interface EstimateEditorProps {
   requirement: Requirement;
   list: List;
   onBack: () => void;
+  selectedEstimate?: Estimate | null;
 }
 
-export function EstimateEditor({ requirement, list, onBack }: EstimateEditorProps) {
+export function EstimateEditor({ requirement, list, onBack, selectedEstimate }: EstimateEditorProps) {
   const { currentUser } = useAuth();
   const { toast } = useToast();
   const {
@@ -63,20 +64,43 @@ export function EstimateEditor({ requirement, list, onBack }: EstimateEditorProp
       setPreviousEstimates(estimates);
 
       if (!isInitializedRef.current && currentUser) {
-        // Apply smart defaults on first load
-        const { defaults, sources } = await getEstimateDefaults(requirement, list, currentUser);
-        if (!isMounted) return;
+        // If a specific estimate is selected, load its data
+        if (selectedEstimate) {
+          setScenario(selectedEstimate.scenario);
+          setComplexity(selectedEstimate.complexity);
+          setEnvironments(selectedEstimate.environments);
+          setReuse(selectedEstimate.reuse);
+          setStakeholders(selectedEstimate.stakeholders);
+          setSelectedActivities([...selectedEstimate.included_activities]);
+          setSelectedRisks([...selectedEstimate.selected_risks]);
+          setIncludeOptional(selectedEstimate.include_optional);
 
-        setScenario(defaults.scenario || 'A');
-        setComplexity(defaults.complexity || '');
-        setEnvironments(defaults.environments || '');
-        setReuse(defaults.reuse || '');
-        setStakeholders(defaults.stakeholders || '');
-        setSelectedActivities(defaults.included_activities || []);
-        setSelectedRisks(defaults.selected_risks || []);
-        setIncludeOptional(defaults.include_optional || false);
+          // Mark all as overridden when viewing existing estimate
+          setOverriddenFields({
+            complexity: true,
+            environments: true,
+            reuse: true,
+            stakeholders: true,
+            activities: true,
+            risks: true
+          });
+          setDefaultSources([]);
+        } else {
+          // Apply smart defaults on first load
+          const { defaults, sources } = await getEstimateDefaults(requirement, list, currentUser);
+          if (!isMounted) return;
 
-        setDefaultSources(sources);
+          setScenario(defaults.scenario || 'A');
+          setComplexity(defaults.complexity || '');
+          setEnvironments(defaults.environments || '');
+          setReuse(defaults.reuse || '');
+          setStakeholders(defaults.stakeholders || '');
+          setSelectedActivities(defaults.included_activities || []);
+          setSelectedRisks(defaults.selected_risks || []);
+          setIncludeOptional(defaults.include_optional || false);
+
+          setDefaultSources(sources);
+        }
         isInitializedRef.current = true;
       }
 
@@ -90,7 +114,7 @@ export function EstimateEditor({ requirement, list, onBack }: EstimateEditorProp
     return () => {
       isMounted = false;
     };
-  }, [requirement.req_id, list, currentUser]);
+  }, [requirement.req_id, list, currentUser, selectedEstimate]);
 
   const groupedActivities = activities.reduce((groups, activity) => {
     const group = activity.driver_group;
