@@ -29,6 +29,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { useToast } from '@/hooks/use-toast';
 import { useDebounce } from '@/hooks/use-debounce';
+import { useAuth } from '@/contexts/AuthContext';
 import { FilterPopover } from './requirements/FilterPopover';
 import { PRIORITY_OPTIONS, STATE_OPTIONS } from '@/constants/requirements';
 import { DefaultPill } from '@/components/DefaultPill';
@@ -51,6 +52,7 @@ import { logger } from '@/lib/logger';
 import { DashboardView } from './DashboardView';
 import { useSearchParams } from 'react-router-dom';
 import { parseLabels } from '@/lib/utils';
+import { ThemeToggle } from './ThemeToggle';
 import {
   RequirementFilters,
   SortOption,
@@ -147,7 +149,7 @@ export function RequirementsList({
   const [requirementPendingDeletion, setRequirementPendingDeletion] = useState<Requirement | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
 
-  const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
+  const [viewMode, setViewMode] = useState<'list' | 'grid'>('grid');
   const [requirementEstimates, setRequirementEstimates] = useState<Record<string, RequirementWithEstimate>>({});
   const [estimatesLoading, setEstimatesLoading] = useState(false);
   const [filters, setFilters] = useState<RequirementFilters>(INITIAL_FILTERS);
@@ -179,6 +181,10 @@ export function RequirementsList({
   const [isEditListDialogOpen, setIsEditListDialogOpen] = useState(false);
   const [listFormData, setListFormData] = useState(() => createListFormState(list));
   const [listUpdating, setListUpdating] = useState(false);
+  const [isEditingListName, setIsEditingListName] = useState(false);
+  const [listNameInput, setListNameInput] = useState(list.name);
+  const listNameInputRef = useRef<HTMLInputElement>(null);
+
   const openListEditDialog = () => {
     setListFormData(createListFormState(list));
     setIsEditListDialogOpen(true);
@@ -227,8 +233,79 @@ export function RequirementsList({
     }
   }, [isFormDialogOpen]);
 
+  // Focus management for list name editing
+  useEffect(() => {
+    if (isEditingListName && listNameInputRef.current) {
+      listNameInputRef.current.focus();
+      listNameInputRef.current.select();
+    }
+  }, [isEditingListName]);
+
+  const handleStartEditingListName = () => {
+    setListNameInput(list.name);
+    setIsEditingListName(true);
+  };
+
+  const handleSaveListName = async () => {
+    const trimmedName = listNameInput.trim();
+    if (!trimmedName) {
+      toast({
+        variant: 'destructive',
+        title: 'Errore',
+        description: 'Il nome della lista non può essere vuoto.'
+      });
+      setListNameInput(list.name);
+      setIsEditingListName(false);
+      return;
+    }
+
+    if (trimmedName === list.name) {
+      setIsEditingListName(false);
+      return;
+    }
+
+    try {
+      const updatedList: List = {
+        ...list,
+        name: trimmedName
+      };
+      await saveList(updatedList);
+      onListUpdated(updatedList);
+      setIsEditingListName(false);
+      toast({
+        title: 'Nome aggiornato',
+        description: 'Il nome della lista è stato modificato.'
+      });
+    } catch (error) {
+      logger.error('Error updating list name', error);
+      toast({
+        variant: 'destructive',
+        title: 'Errore',
+        description: 'Impossibile aggiornare il nome della lista.'
+      });
+      setListNameInput(list.name);
+      setIsEditingListName(false);
+    }
+  };
+
+  const handleCancelEditingListName = () => {
+    setListNameInput(list.name);
+    setIsEditingListName(false);
+  };
+
+  const handleListNameKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      handleSaveListName();
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      handleCancelEditingListName();
+    }
+  };
+
   useEffect(() => {
     setListFormData(createListFormState(list));
+    setListNameInput(list.name);
   }, [list]);
 
   useEffect(() => {
@@ -633,8 +710,8 @@ export function RequirementsList({
   const totalRequirements = requirements.length;
   const visibleCount = visibleRequirementEntities.length;
 
-  // Current user - in real app, get from auth context
-  const currentUser = 'current.user@example.com';
+  const { currentUser } = useAuth();
+  const resolvedCurrentUser = currentUser ?? 'current.user@example.com';
 
   const resetFormState = () => {
     setFormData(createInitialFormState());
@@ -677,7 +754,7 @@ export function RequirementsList({
       return;
     }
 
-    const { defaults, sources } = getRequirementDefaults(list, currentUser, value);
+    const { defaults, sources } = getRequirementDefaults(list, resolvedCurrentUser, value);
     setDefaultSources(sources);
     setFormData((prev) => ({
       ...prev,
@@ -690,7 +767,7 @@ export function RequirementsList({
 
   const handleOpenCreateDialog = () => {
     resetFormState();
-    const { defaults, sources } = getRequirementDefaults(list, currentUser);
+    const { defaults, sources } = getRequirementDefaults(list, resolvedCurrentUser);
     setDefaultSources(sources);
     setFormData({
       title: '',
@@ -767,7 +844,7 @@ export function RequirementsList({
     }));
 
     if (wasOverridden) {
-      const { defaults, sources } = getRequirementDefaults(list, currentUser, formData.title);
+      const { defaults, sources } = getRequirementDefaults(list, resolvedCurrentUser, formData.title);
       setDefaultSources(sources);
       setFormData((prev) => {
         if (field === 'priority' && defaults.priority) {
@@ -940,33 +1017,27 @@ export function RequirementsList({
         ? 'border-emerald-400 bg-emerald-100/80 text-emerald-900 dark:border-emerald-400/70 dark:bg-emerald-500/30 dark:text-emerald-50'
         : 'border-amber-400 bg-amber-100/80 text-amber-900 dark:border-amber-400/70 dark:bg-amber-500/25 dark:text-amber-50';
 
-    const label = loading
-      ? 'Caricamento...'
-      : hasEstimate
-        ? `Stima ${formatEstimateDays(estimateDays)} gg`
-        : 'Stima non ancora effettuata';
+    const daysValue = loading ? '...' : hasEstimate ? formatEstimateDays(estimateDays) : '—';
 
-    const layoutClasses =
-      variant === 'compact'
-        ? 'flex flex-col gap-0.5 rounded px-1.5 py-1 text-[10px]'
-        : 'flex flex-col gap-1.5 rounded-lg px-3 py-2 text-xs sm:flex-row sm:items-center sm:justify-between';
-
-    const iconClasses = variant === 'compact' ? 'h-3 w-3' : 'h-3.5 w-3.5';
-
-    return (
-      <div className={`${layoutClasses} border font-medium ${stateClasses}`}>
-        <div className="flex items-center gap-1">
-          <BarChart3 className={iconClasses} />
-          <span className="leading-tight">{label}</span>
+    if (variant === 'compact') {
+      // Versione super compatta: solo numero con icona mini
+      return (
+        <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded font-bold text-[10px] ${stateClasses} w-full max-w-full overflow-hidden`}>
+          <BarChart3 className="h-2.5 w-2.5 shrink-0" />
+          <span className="truncate">{daysValue}</span>
         </div>
-        {hasEstimate && updatedOn && variant === 'compact' && (
-          <span className="text-[9px] font-normal opacity-75 leading-tight">
-            Agg. {new Date(updatedOn).toLocaleDateString('it-IT', { month: 'short', day: 'numeric' })}
+      );
+    } return (
+      <div className={`flex flex-wrap items-center justify-between gap-2 rounded-lg px-3 py-2 border font-medium ${stateClasses} min-w-0`}>
+        <div className="flex items-center gap-2 min-w-0 flex-1">
+          <BarChart3 className="h-4 w-4 shrink-0" />
+          <span className="text-sm truncate">
+            {loading ? 'Caricamento...' : hasEstimate ? `Stima ${daysValue} gg` : 'Stima non ancora effettuata'}
           </span>
-        )}
-        {hasEstimate && updatedOn && variant !== 'compact' && (
-          <span className="text-[11px] font-normal opacity-80">
-            Aggiornata {new Date(updatedOn).toLocaleDateString('it-IT')}
+        </div>
+        {hasEstimate && updatedOn && (
+          <span className="text-xs opacity-80 shrink-0 whitespace-nowrap">
+            {new Date(updatedOn).toLocaleDateString('it-IT')}
           </span>
         )}
       </div>
@@ -981,13 +1052,7 @@ export function RequirementsList({
     const hasChildren = (childCountByParent.get(requirement.req_id) ?? 0) > 0;
 
     return (
-      <div
-        className="shrink-0"
-        onClick={handleActionAreaEvent}
-        onMouseDown={handleActionAreaEvent}
-        onPointerDown={handleActionAreaEvent}
-        onKeyDown={handleActionAreaEvent}
-      >
+      <div className="shrink-0" onClick={handleActionAreaEvent}>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
@@ -995,9 +1060,6 @@ export function RequirementsList({
               size="icon"
               className="h-6 w-6 text-muted-foreground hover:text-foreground"
               aria-label={`Azioni per ${requirement.title}`}
-              onClick={handleActionAreaEvent}
-              onMouseDown={handleActionAreaEvent}
-              onPointerDown={handleActionAreaEvent}
             >
               <MoreHorizontal className="h-3.5 w-3.5" />
             </Button>
@@ -1043,7 +1105,26 @@ export function RequirementsList({
               <ArrowLeft className="h-4 w-4" />
             </Button>
             <span className="text-xs text-muted-foreground shrink-0">Liste /</span>
-            <h1 className="text-base font-bold truncate">{list.name}</h1>
+            {isEditingListName ? (
+              <input
+                ref={listNameInputRef}
+                type="text"
+                value={listNameInput}
+                onChange={(e) => setListNameInput(e.target.value)}
+                onBlur={handleSaveListName}
+                onKeyDown={handleListNameKeyDown}
+                className="h-7 text-base font-bold max-w-[300px] px-2 rounded border border-input bg-background"
+                autoFocus
+              />
+            ) : (
+              <h1
+                className="text-base font-bold truncate cursor-pointer hover:text-primary transition-colors"
+                onClick={handleStartEditingListName}
+                title="Clicca per modificare"
+              >
+                {list.name}
+              </h1>
+            )}
             {list.description && (
               <span className="text-xs text-muted-foreground truncate hidden md:inline">{list.description}</span>
             )}
@@ -1055,6 +1136,7 @@ export function RequirementsList({
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
+            <ThemeToggle />
             <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs" onClick={openListEditDialog}>
               <PenSquare className="h-3 w-3" />
               <span className="hidden sm:inline">Modifica</span>
@@ -1382,9 +1464,9 @@ export function RequirementsList({
                       <SelectValue placeholder="Ordinamento" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="created-desc">PiÃ¹ recenti</SelectItem>
+                      <SelectItem value="created-desc">Piu recenti</SelectItem>
                       <SelectItem value="created-asc">Meno recenti</SelectItem>
-                      <SelectItem value="priority">Priorita </SelectItem>
+                      <SelectItem value="priority">Priorita</SelectItem>
                       <SelectItem value="title">Titolo A-Z</SelectItem>
                       <SelectItem value="estimate-desc">Stima maggiore</SelectItem>
                       <SelectItem value="estimate-asc">Stima minore</SelectItem>
@@ -1426,12 +1508,20 @@ export function RequirementsList({
                   />
                 ) : (
                   <div
-                    className={viewMode === 'grid' ? 'grid gap-3 h-[calc(100vh-280px)]' : 'flex flex-col gap-3'}
-                    style={viewMode === 'grid' ? {
-                      gridTemplateColumns: 'repeat(auto-fill, minmax(240px, min(280px, 100%)))',
-                      gridAutoRows: '1fr',
-                      gridAutoFlow: 'dense'
-                    } : undefined}
+                    className={
+                      viewMode === 'grid'
+                        ? 'grid gap-4 overflow-auto h-[calc(100vh-280px)] auto-rows-min'
+                        : 'flex flex-col gap-3 overflow-auto'
+                    }
+                    style={
+                      viewMode === 'grid'
+                        ? {
+                          gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
+                          alignContent: 'start',
+                          padding: '2px'
+                        }
+                        : undefined
+                    }
                   >
                     {visibleRequirements.map(({ requirement, labels, depth, parentId }) => {
                       const priorityAccentColor = {
@@ -1461,7 +1551,7 @@ export function RequirementsList({
                         return (
                           <Card
                             key={requirement.req_id}
-                            className={`cursor-pointer bg-card hover:shadow-lg transition-all duration-200 h-full ${cardAccentClasses}`}
+                            className={`relative cursor-pointer bg-card/80 backdrop-blur-sm hover:shadow-xl hover:scale-[1.02] transition-all duration-300 flex flex-col ${cardAccentClasses} overflow-hidden group`}
                             onClick={(e) => {
                               const target = e.target as HTMLElement;
                               if (!target.closest('[role="menu"]') && !target.closest('button[aria-haspopup]')) {
@@ -1478,47 +1568,96 @@ export function RequirementsList({
                             role="button"
                             aria-label={`Apri requisito: ${requirement.title}`}
                           >
-                            <div className="flex flex-col h-full p-2">
-                              {/* Header: Badge compatti e Menu */}
-                              <div className="flex items-center justify-between gap-1.5 mb-1.5">
-                                <div className="flex items-center gap-1 flex-wrap">
-                                  <Badge className={`${prioritySolidBadge} text-white text-[9px] font-semibold px-1.5 py-0 h-4 border-0`}>
+                            <CardContent className="p-4 flex flex-col gap-3">
+                              {/* Header: Badge, Stato e Menu */}
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="flex items-center gap-1.5 flex-wrap flex-1 min-w-0">
+                                  <Badge className={`${prioritySolidBadge} text-white text-[10px] font-bold px-2 py-0.5 border-0 shadow-sm`}>
                                     {requirement.priority === 'High' ? 'Alta' : requirement.priority === 'Med' ? 'Media' : 'Bassa'}
                                   </Badge>
-                                  <Badge className={`${stateSolidBadge} text-white text-[9px] font-semibold px-1.5 py-0 h-4 border-0`}>
+                                  <Badge className={`${stateSolidBadge} text-white text-[10px] font-bold px-2 py-0.5 border-0 shadow-sm`}>
                                     {requirement.state === 'Proposed' ? 'Proposto' :
                                       requirement.state === 'Selected' ? 'Selezionato' :
                                         requirement.state === 'Scheduled' ? 'Pianificato' : 'Completato'}
                                   </Badge>
                                   {childrenCount > 0 && (
-                                    <Badge variant="outline" className="text-[8px] uppercase tracking-wide px-1.5 py-0.5 border-dashed">
-                                      Padre di {childrenCount}
+                                    <Badge variant="outline" className="text-[10px] px-1.5 py-0.5 border-dashed font-medium">
+                                      +{childrenCount} figli
                                     </Badge>
                                   )}
                                 </div>
-                                {renderRequirementActions(requirement)}
+                                <div className="shrink-0 -mt-1">{renderRequirementActions(requirement)}</div>
                               </div>
 
-                              {/* Titolo prominente - occupa spazio centrale */}
-                              <div className="flex-1 flex items-center justify-start mb-1.5">
-                                <h3 className="text-xl font-bold text-foreground leading-tight line-clamp-2">
+                              {/* Titolo - principale */}
+                              <div className="flex-1">
+                                <h3 className="text-base font-bold text-foreground leading-tight line-clamp-2 mb-2">
                                   {requirement.title}
                                 </h3>
+
+                                {/* Descrizione - troncata */}
+                                {requirement.description && (
+                                  <p className="text-xs text-muted-foreground line-clamp-3 leading-relaxed">
+                                    {requirement.description}
+                                  </p>
+                                )}
                               </div>
+
+                              {/* Metadati - Business Owner e Data */}
+                              <div className="flex flex-col gap-2 pt-2 border-t border-border/50">
+                                {requirement.business_owner && (
+                                  <div className="flex items-center gap-2 text-xs">
+                                    <User className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                                    <span className="font-medium text-foreground truncate">
+                                      {requirement.business_owner}
+                                    </span>
+                                  </div>
+                                )}
+
+                                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                  <Calendar className="h-3.5 w-3.5 shrink-0" />
+                                  <span>
+                                    Creato {new Date(requirement.created_on).toLocaleDateString('it-IT', {
+                                      day: 'numeric',
+                                      month: 'short',
+                                      year: 'numeric'
+                                    })}
+                                  </span>
+                                </div>
+                              </div>
+
+                              {/* Etichette */}
+                              {labels.length > 0 && (
+                                <div className="flex flex-wrap items-center gap-1.5">
+                                  <Tag className="h-3 w-3 text-muted-foreground shrink-0" />
+                                  {labels.slice(0, 3).map((label, index) => (
+                                    <Badge key={index} variant="outline" className="text-[10px] px-1.5 py-0 capitalize">
+                                      {label}
+                                    </Badge>
+                                  ))}
+                                  {labels.length > 3 && (
+                                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-semibold">
+                                      +{labels.length - 3}
+                                    </Badge>
+                                  )}
+                                </div>
+                              )}
+
+                              {/* Relazione parent */}
                               {parentTitle && (
-                                <div className="flex items-center gap-1 text-[10px] text-muted-foreground mb-1">
-                                  <ArrowDownRight className="h-3 w-3" />
+                                <div className="flex items-center gap-1.5 text-xs text-muted-foreground bg-muted/40 rounded-md px-2 py-1.5 border border-dashed border-border">
+                                  <ArrowDownRight className="h-3 w-3 shrink-0" />
                                   <span className="truncate">
-                                    Figlio di <span className="font-medium text-foreground">{parentTitle}</span>
+                                    Figlio di: <span className="font-semibold text-foreground">{parentTitle}</span>
                                   </span>
                                 </div>
                               )}
 
-                              {/* Box Stima compatto in fondo */}
-                              <div className="mt-auto">
-                                {renderEstimateHighlight(requirement, 'compact')}
+                              {/* Stima - footer prominente */}
+                              <div className="mt-auto pt-2">
+                                {renderEstimateHighlight(requirement, 'default')}
                               </div>
-                            </div>
+                            </CardContent>
                           </Card>
                         );
                       }
@@ -1529,7 +1668,6 @@ export function RequirementsList({
                           className={`group cursor-pointer border bg-card/70 transition-all duration-150 ${cardAccentClasses} hover:border-primary/40 hover:bg-primary/5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40`}
                           style={{ marginLeft: depth * 16 }}
                           onClick={(e) => {
-                            // Verifica che il click non sia sul menu dropdown
                             const target = e.target as HTMLElement;
                             if (!target.closest('[role="menu"]') && !target.closest('button[aria-haspopup]')) {
                               onSelectRequirement(requirement);
@@ -1545,97 +1683,97 @@ export function RequirementsList({
                           role="button"
                           aria-label={`Apri requisito: ${requirement.title}`}
                         >
-                          <div className="flex flex-col gap-2 px-3 py-2.5 sm:px-4 sm:py-3">
-                            <div className="flex flex-col gap-2 text-xs sm:flex-row sm:items-center sm:justify-between">
-                              <div className="flex min-w-0 flex-1 items-center gap-2">
+                          <CardContent className="px-4 py-3">
+                            {/* Header principale */}
+                            <div className="flex items-center justify-between gap-3 mb-2">
+                              <div className="flex items-center gap-2 flex-1 min-w-0">
                                 {depth > 0 && (
-                                  <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                                    Livello {depth}
+                                  <span className="text-[10px] uppercase tracking-wide text-muted-foreground shrink-0">
+                                    Liv.{depth}
                                   </span>
                                 )}
                                 <span
-                                  className={`h-2.5 w-2.5 rounded-full ${requirement.priority === 'High'
+                                  className={`h-2.5 w-2.5 rounded-full shrink-0 ${requirement.priority === 'High'
                                     ? 'bg-red-500'
                                     : requirement.priority === 'Med'
                                       ? 'bg-yellow-500'
                                       : 'bg-green-500'
                                     }`}
                                 />
-                                <p className="truncate text-sm font-semibold leading-tight text-foreground">
+                                <h3 className="text-base font-semibold text-foreground truncate flex-1 min-w-0">
                                   {requirement.title}
-                                </p>
+                                </h3>
                               </div>
-                              <div className="flex items-center gap-2 sm:justify-end">
-                                <div className="min-w-[160px] flex-1 sm:flex-none">
+                              <div className="flex items-center gap-2 shrink-0">
+                                <div className="hidden md:block min-w-[200px]">
                                   {renderEstimateHighlight(requirement, 'compact')}
                                 </div>
                                 {renderRequirementActions(requirement)}
                               </div>
                             </div>
 
-                            <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
-                              <Badge className={`${prioritySolidBadge} text-white text-[10px] font-semibold px-2 py-0.5 border-0`}>
-                                {requirement.priority === 'High' ? 'Alta' : requirement.priority === 'Med' ? 'Media' : 'Bassa'}
+                            {/* Badge e metadati */}
+                            <div className="flex flex-wrap items-center gap-2 text-xs mb-2">
+                              <Badge className={`${prioritySolidBadge} text-white font-semibold px-2 py-0.5 border-0`}>
+                                {PRIORITY_LABEL[requirement.priority]}
                               </Badge>
-                              <Badge className={`${stateSolidBadge} text-white text-[10px] font-semibold px-2 py-0.5 border-0`}>
-                                {requirement.state === 'Proposed' ? 'Proposto' :
-                                  requirement.state === 'Selected' ? 'Selezionato' :
-                                    requirement.state === 'Scheduled' ? 'Pianificato' : 'Completato'}
+                              <Badge className={`${stateSolidBadge} text-white font-semibold px-2 py-0.5 border-0`}>
+                                {STATE_LABEL[requirement.state]}
                               </Badge>
                               {childrenCount > 0 && (
-                                <Badge variant="outline" className="text-[10px] border-dashed">
+                                <Badge variant="outline" className="border-dashed">
                                   Padre di {childrenCount}
                                 </Badge>
                               )}
-                              {requirement.business_owner ? (
-                                <div className="inline-flex items-center gap-1.5 rounded-full border bg-muted/40 px-2 py-0.5">
+                              {requirement.business_owner && (
+                                <div className="inline-flex items-center gap-1 rounded-full border bg-muted/40 px-2 py-0.5">
                                   <User className="h-3 w-3" />
-                                  <span className="font-medium normal-case">{requirement.business_owner}</span>
+                                  <span className="font-medium">{requirement.business_owner}</span>
                                 </div>
-                              ) : (
-                                <span className="rounded-full border border-dashed px-2 py-0.5">Non assegnato</span>
                               )}
-                              <div className="inline-flex items-center gap-1.5 rounded-full border bg-muted/30 px-2 py-0.5">
+                              <div className="inline-flex items-center gap-1 rounded-full border bg-muted/30 px-2 py-0.5">
                                 <Calendar className="h-3 w-3" />
                                 <span>{new Date(requirement.created_on).toLocaleDateString('it-IT')}</span>
                               </div>
                             </div>
 
-                            <div className="hidden flex-col gap-2 text-[11px] text-muted-foreground group-hover:flex group-focus-visible:flex group-active:flex">
+                            {/* Stima mobile */}
+                            <div className="md:hidden mb-2">
+                              {renderEstimateHighlight(requirement, 'default')}
+                            </div>
+
+                            {/* Dettagli espandibili al hover */}
+                            <div className="hidden group-hover:block group-focus-visible:block">
                               {parentTitle && (
-                                <div className="flex items-center gap-1 text-muted-foreground">
-                                  <ArrowDownRight className="h-3 w-3" />
+                                <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-2">
+                                  <ArrowDownRight className="h-3.5 w-3.5" />
                                   <span className="truncate">
                                     Figlio di <span className="font-semibold text-foreground">{parentTitle}</span>
                                   </span>
                                 </div>
                               )}
                               {requirement.description && (
-                                <p className="line-clamp-2 leading-snug text-muted-foreground">
+                                <p className="text-xs text-muted-foreground line-clamp-2 leading-relaxed mb-2">
                                   {requirement.description}
                                 </p>
                               )}
-                              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                              {labels.length > 0 && (
                                 <div className="flex flex-wrap items-center gap-1.5">
-                                  {labels.length > 0 && (
-                                    <>
-                                      <Tag className="h-3 w-3" />
-                                      {labels.slice(0, 4).map((label, index) => (
-                                        <Badge key={index} variant="outline" className="px-2 py-0.5 text-[10px]">
-                                          {label}
-                                        </Badge>
-                                      ))}
-                                      {labels.length > 4 && (
-                                        <Badge variant="outline" className="px-2 py-0.5 text-[10px]">
-                                          +{labels.length - 4}
-                                        </Badge>
-                                      )}
-                                    </>
+                                  <Tag className="h-3 w-3 text-muted-foreground" />
+                                  {labels.slice(0, 5).map((label, index) => (
+                                    <Badge key={index} variant="outline" className="text-xs">
+                                      {label}
+                                    </Badge>
+                                  ))}
+                                  {labels.length > 5 && (
+                                    <Badge variant="outline" className="text-xs">
+                                      +{labels.length - 5}
+                                    </Badge>
                                   )}
                                 </div>
-                              </div>
+                              )}
                             </div>
-                          </div>
+                          </CardContent>
                         </Card>
                       );
                     })}

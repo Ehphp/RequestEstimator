@@ -20,6 +20,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { ThemeToggle } from '@/components/ThemeToggle';
+import { useAuth } from '@/contexts/AuthContext';
 import { useSearchParams } from 'react-router-dom';
 import { EmptyListsSidebar } from '@/components/EmptyListsSidebar';
 import { DefaultPill } from '@/components/DefaultPill';
@@ -36,7 +37,6 @@ import { getListDefaults } from '../lib/defaults';
 import { presets } from '@/data/presets';
 import { RequirementsList } from '../components/RequirementsList';
 import { RequirementDetailView } from '../components/RequirementDetailView';
-import { TreemapApex } from '../components/TreemapApex';
 import { TreemapApexMultiSeries } from '../components/TreemapApexMultiSeries';
 import { getLatestEstimates } from '@/lib/storage';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -57,12 +57,12 @@ export default function Index() {
 
   const allowDraftStatus = import.meta.env.VITE_ENABLE_DRAFT_STATUS === 'true';
 
+  const { currentUser } = useAuth();
+  const resolvedCurrentUser = currentUser ?? 'current.user@example.com';
+
   const [lists, setLists] = useState<List[]>([]);
   const [listStats, setListStats] = useState<Record<string, { totalRequirements: number; totalDays: number; criticalPathDays: number }>>({});
   const [listRequirementStats, setListRequirementStats] = useState<Record<string, RequirementTreemapStat[]>>({});
-  const [treemapMode, setTreemapMode] = useState<'lists' | 'requirements'>('lists');
-  const [focusedTreemapListId, setFocusedTreemapListId] = useState<string | null>(null);
-  const [useMultiSeries, setUseMultiSeries] = useState(false); // Toggle per Multiple Series
   const [includeDraftLists, setIncludeDraftLists] = useState(false);
   const [includeArchivedLists, setIncludeArchivedLists] = useState(false);
   const listStatusFilter = useMemo<List['status'][]>(() => {
@@ -94,7 +94,6 @@ export default function Index() {
   const [searchParams, setSearchParams] = useSearchParams();
   const listIdParam = searchParams.get('listId');
   const reqIdParam = searchParams.get('reqId');
-  const currentUser = 'current.user@example.com'; // TODO: wire to auth
 
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [isSavingList, setIsSavingList] = useState(false);
@@ -111,7 +110,7 @@ export default function Index() {
     default_labels?: string;
     default_description?: string;
   }>(() => {
-    const defaults = getListDefaults(currentUser);
+    const defaults = getListDefaults(resolvedCurrentUser);
     return {
       name: '',
       owner: defaults.owner ?? '',
@@ -137,12 +136,8 @@ export default function Index() {
     () => lists.filter((list) => list.status === 'Active'),
     [lists]
   );
-  const requirementReadyLists = useMemo(
-    () => activeLists.filter((list) => (listRequirementStats[list.list_id]?.length ?? 0) > 0),
-    [activeLists, listRequirementStats]
-  );
   const resetForm = useCallback(() => {
-    const defaults = getListDefaults(currentUser);
+    const defaults = getListDefaults(resolvedCurrentUser);
     setFormData({
       name: '',
       owner: defaults.owner ?? '',
@@ -162,17 +157,7 @@ export default function Index() {
       status: 'Default'
     });
     setOverriddenFields({});
-  }, [currentUser]);
-
-  const canViewRequirements = requirementReadyLists.length > 0;
-
-  const focusedTreemapList = useMemo(
-    () =>
-      focusedTreemapListId
-        ? lists.find((list) => list.list_id === focusedTreemapListId) ?? null
-        : null,
-    [focusedTreemapListId, lists]
-  );
+  }, [resolvedCurrentUser]);
 
   const handleToggleOverride = (field: 'owner' | 'period' | 'status') => {
     setOverriddenFields(prev => ({
@@ -184,7 +169,7 @@ export default function Index() {
       return;
     }
 
-    const defaults = getListDefaults(currentUser);
+    const defaults = getListDefaults(resolvedCurrentUser);
     if (field === 'owner') {
       setFormData(prev => ({ ...prev, owner: defaults.owner ?? '' }));
     } else if (field === 'period') {
@@ -323,22 +308,6 @@ export default function Index() {
     latestListIdRef.current = selectedList?.list_id ?? null;
   }, [selectedList]);
 
-  useEffect(() => {
-    if (treemapMode !== 'requirements') {
-      return;
-    }
-    if (
-      focusedTreemapListId &&
-      (listRequirementStats[focusedTreemapListId]?.length ?? 0) > 0
-    ) {
-      return;
-    }
-    const fallback = requirementReadyLists[0]?.list_id ?? null;
-    if (fallback !== focusedTreemapListId) {
-      setFocusedTreemapListId(fallback);
-    }
-  }, [treemapMode, focusedTreemapListId, requirementReadyLists, listRequirementStats]);
-
   const loadRequirements = async (listId: string, options?: { reset?: boolean }) => {
     const { reset = false } = options || {};
     try {
@@ -448,7 +417,10 @@ export default function Index() {
 
     // Initial measurement
     logger.debug('🎬 Starting initial measurement...');
-    updateSize();
+    // Small delay to ensure DOM is ready
+    const initialTimeout = setTimeout(() => {
+      updateSize();
+    }, 50);
 
     window.addEventListener('resize', handleResize);
 
@@ -457,6 +429,7 @@ export default function Index() {
       if (rafId !== null) cancelAnimationFrame(rafId);
       if (timeoutId !== null) clearTimeout(timeoutId);
       if (retryTimeoutId !== null) clearTimeout(retryTimeoutId);
+      clearTimeout(initialTimeout);
     };
   }, [selectedList, remeasureTrigger]);
 
@@ -517,7 +490,7 @@ export default function Index() {
       default_labels: formData.default_labels,
       default_description: formData.default_description,
       created_on: new Date().toISOString(),
-      created_by: currentUser
+      created_by: resolvedCurrentUser
     };
 
     try {
@@ -544,7 +517,6 @@ export default function Index() {
   const handleSelectList = (list: List) => {
     setSelectedList(list);
     setSelectedRequirement(null);
-    setFocusedTreemapListId(list.list_id);
     updateSearchParams((params) => {
       params.set('listId', list.list_id);
       params.delete('reqId');
@@ -561,29 +533,6 @@ export default function Index() {
     updateSearchParams((params) => {
       params.set('reqId', requirement.req_id);
     });
-  };
-
-  const handleShowListTreemap = () => {
-    if (treemapMode !== 'lists') {
-      setTreemapMode('lists');
-    }
-  };
-
-  const handleShowRequirementTreemap = () => {
-    if (!canViewRequirements) {
-      return;
-    }
-    setTreemapMode('requirements');
-    setFocusedTreemapListId((current) => {
-      if (current && (listRequirementStats[current]?.length ?? 0) > 0) {
-        return current;
-      }
-      return requirementReadyLists[0]?.list_id ?? null;
-    });
-  };
-
-  const handleTreemapListFilterChange = (listId: string) => {
-    setFocusedTreemapListId(listId);
   };
 
   const handleTreemapRequirementSelect = (listId: string, requirementId: string) => {
@@ -711,17 +660,17 @@ export default function Index() {
   }
 
   return (
-    <div className="h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-black dark:to-gray-950 overflow-hidden flex flex-col p-3">
-      <div className="max-w-7xl mx-auto w-full h-full flex flex-col gap-2">
+    <div className="h-screen max-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-black dark:to-gray-950 overflow-hidden flex flex-col p-2">
+      <div className="max-w-7xl mx-auto w-full h-full flex flex-col gap-1.5">
         {/* Header Ultra-Compatto - singola riga */}
-        <div className="flex items-center justify-between gap-3 bg-white dark:bg-gray-900 px-3 py-2 rounded-lg border shadow-sm shrink-0">
+        <div className="flex items-center justify-between gap-3 bg-white dark:bg-gray-900 px-3 py-1.5 rounded-lg border shadow-sm shrink-0">
           <div className="flex items-center gap-3 flex-1 min-w-0">
-            <h1 className="text-base font-bold truncate">Sistema Stima Requisiti</h1>
+            <h1 className="text-sm font-bold truncate">Sistema Stima Requisiti</h1>
             <Badge variant="outline" className="text-[9px] h-4 px-1.5 bg-green-50 dark:bg-green-950/30 text-green-700 dark:text-green-400 border-green-200 dark:border-green-800 shrink-0">
               <span className="w-1.5 h-1.5 bg-green-500 rounded-full mr-1"></span>
               Supabase
             </Badge>
-            <div className="hidden md:flex items-center gap-2 text-[10px] text-muted-foreground">
+            <div className="hidden md:flex items-center gap-2 text-[9px] text-muted-foreground">
               {allowDraftStatus && (
                 <label className="flex items-center gap-1 cursor-pointer" htmlFor="toggle-drafts">
                   <Checkbox
@@ -746,7 +695,7 @@ export default function Index() {
           </div>
           <div className="flex items-center gap-2 shrink-0">
             <ThemeToggle />
-            <Button onClick={handleCreateNewList} size="sm" className="h-7 text-xs px-2">
+            <Button onClick={handleCreateNewList} size="sm" className="h-6 text-xs px-2">
               <Plus className="h-3 w-3 mr-1" />
               Nuova Lista
             </Button>
@@ -1055,7 +1004,7 @@ export default function Index() {
             </CardContent>
           </Card>
         ) : (
-          <div className="flex gap-3 flex-1 min-h-0">
+          <div className="flex gap-2 flex-1 min-h-0">
             {/* Empty Lists Sidebar */}
             <EmptyListsSidebar
               emptyLists={lists.filter(list => {
@@ -1067,102 +1016,26 @@ export default function Index() {
               onDeleteList={openDeleteDialog}
             />
 
-            {/* Treemap Container - ApexCharts Version */}
+            {/* Treemap Container - ApexCharts MultiSeries Version */}
             <div className="flex-1 min-h-0 flex flex-col">
-              <div className="flex flex-wrap items-start justify-between gap-2 mb-2">
+              <div className="flex flex-wrap items-start justify-between gap-1.5 mb-1.5">
                 <div className="min-w-0">
-                  <p className="text-xs font-semibold truncate">
-                    {treemapMode === 'lists'
-                      ? 'Distribuzione effort liste'
-                      : focusedTreemapList
-                        ? `Requisiti • ${focusedTreemapList.name}`
-                        : 'Requisiti stimati'}
+                  <p className="text-xs font-semibold truncate">Distribuzione effort liste e requisiti</p>
+                  <p className="text-[9px] text-muted-foreground truncate hidden sm:block">
+                    Clicca per aprire la lista o il requisito
                   </p>
-                  <p className="text-[10px] text-muted-foreground truncate hidden sm:block">
-                    {treemapMode === 'lists'
-                      ? 'Clicca per aprire la lista'
-                      : 'Dimensionati sulle stime più recenti'}
-                  </p>
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <div className="flex items-center gap-1">
-                    <Button
-                      variant={treemapMode === 'lists' ? 'default' : 'outline'}
-                      size="sm"
-                      className="h-6 text-[10px] px-2"
-                      onClick={handleShowListTreemap}
-                    >
-                      Liste
-                    </Button>
-                    <Button
-                      variant={treemapMode === 'requirements' ? 'default' : 'outline'}
-                      size="sm"
-                      className="h-6 text-[10px] px-2"
-                      onClick={handleShowRequirementTreemap}
-                      disabled={!canViewRequirements}
-                    >
-                      Requisiti
-                    </Button>
-                  </div>
-
-                  {/* Toggle Multiple Series - solo in modalità Lists */}
-                  {treemapMode === 'lists' && lists.length > 0 && lists.length <= 10 && (
-                    <div className="flex items-center gap-1.5 pl-2 border-l">
-                      <label
-                        htmlFor="toggle-multi-series"
-                        className="text-[10px] text-muted-foreground cursor-pointer hover:text-foreground transition-colors"
-                      >
-                        Vista gerarchica
-                      </label>
-                      <Checkbox
-                        id="toggle-multi-series"
-                        checked={useMultiSeries}
-                        onCheckedChange={(checked) => setUseMultiSeries(Boolean(checked))}
-                        className="h-3 w-3"
-                      />
-                    </div>
-                  )}
-
-                  {treemapMode === 'requirements' && canViewRequirements && (
-                    <Select value={focusedTreemapListId ?? undefined} onValueChange={handleTreemapListFilterChange}>
-                      <SelectTrigger className="h-6 text-[10px] w-40">
-                        <SelectValue placeholder="Scegli lista" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {requirementReadyLists.map((list) => (
-                          <SelectItem key={list.list_id} value={list.list_id}>
-                            {list.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  )}
                 </div>
               </div>
               <div className="flex-1 min-h-0">
-                {useMultiSeries && treemapMode === 'lists' ? (
-                  <TreemapApexMultiSeries
-                    lists={activeLists}
-                    listStats={listStats}
-                    listRequirementStats={listRequirementStats}
-                    onSelectList={handleSelectList}
-                    onRequirementSelect={handleTreemapRequirementSelect}
-                    containerHeight={window.innerHeight - 200}
-                    showLegend={true}
-                  />
-                ) : (
-                  <TreemapApex
-                    lists={activeLists}
-                    listStats={listStats}
-                    listRequirementStats={listRequirementStats}
-                    mode={treemapMode}
-                    focusedListId={focusedTreemapListId}
-                    onSelectList={handleSelectList}
-                    onRequirementSelect={handleTreemapRequirementSelect}
-                    containerHeight={window.innerHeight - 200}
-                    showLegend={false}
-                  />
-                )}
+                <TreemapApexMultiSeries
+                  lists={activeLists}
+                  listStats={listStats}
+                  listRequirementStats={listRequirementStats}
+                  onSelectList={handleSelectList}
+                  onRequirementSelect={handleTreemapRequirementSelect}
+                  containerHeight={window.innerHeight - 140}
+                  showLegend={true}
+                />
               </div>
             </div>
           </div>

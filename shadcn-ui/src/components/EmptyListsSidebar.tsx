@@ -21,28 +21,27 @@ export function EmptyListsSidebar({
     if (emptyLists.length === 0) return null;
 
     return (
-        <div className="w-72 shrink-0 space-y-4">
+        <div className="w-64 shrink-0 space-y-2">
             {/* Header */}
-            <div className="rounded-lg border-2 border-amber-300 bg-amber-50 p-4 dark:border-amber-700 dark:bg-amber-950/30">
-                <div className="mb-3 flex items-center gap-2">
-                    <AlertCircle className="h-5 w-5 text-amber-600 dark:text-amber-400" />
-                    <h3 className="text-sm font-semibold text-amber-900 dark:text-amber-100">Liste Vuote</h3>
-                    <Badge variant="secondary" className="ml-auto text-xs">
+            <div className="rounded-lg border-2 border-amber-300 bg-amber-50 p-2 dark:border-amber-700 dark:bg-amber-950/30">
+                <div className="mb-1.5 flex items-center gap-2">
+                    <AlertCircle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                    <h3 className="text-xs font-semibold text-amber-900 dark:text-amber-100">Liste Vuote</h3>
+                    <Badge variant="secondary" className="ml-auto text-[10px] h-4 px-1.5">
                         {emptyLists.length}
                     </Badge>
                 </div>
-                <p className="text-xs text-amber-700 dark:text-amber-300">
-                    Queste liste non hanno requisiti o stime completate
+                <p className="text-[10px] text-amber-700 dark:text-amber-300">
+                    Senza requisiti o stime
                 </p>
             </div>
 
             {/* Empty Lists Cards */}
-            <div className="max-h-[calc(100vh-300px)] space-y-2 overflow-y-auto pr-1.5">
+            <div className="max-h-[calc(100vh-180px)] space-y-1.5 overflow-y-auto pr-1">
                 {emptyLists.map((list) => {
                     const stats = listStats[list.list_id] || { totalRequirements: 0, totalDays: 0, criticalPathDays: 0 };
                     const technology = list.technology?.trim();
                     const technologyColor = technology ? getTechnologyColor(technology) : undefined;
-                    const createdOn = list.created_on ? new Date(list.created_on).toLocaleDateString('it-IT') : null;
 
                     return (
                         <Card
@@ -50,15 +49,15 @@ export function EmptyListsSidebar({
                             className="cursor-pointer border border-amber-100 bg-white transition-all hover:border-amber-400 hover:shadow-lg dark:bg-gray-900"
                             onClick={() => onSelectList(list)}
                         >
-                            <CardContent className="px-3 py-2.5">
-                                <div className="flex items-start gap-2">
-                                    <FileText className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
-                                    <div className="min-w-0 flex-1 space-y-1">
-                                        <div className="flex items-center gap-2">
-                                            <h4 className="truncate text-sm font-semibold leading-tight">{list.name}</h4>
+                            <CardContent className="px-2 py-1.5">
+                                <div className="flex items-start gap-1.5">
+                                    <FileText className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-500" />
+                                    <div className="min-w-0 flex-1 space-y-0.5">
+                                        <div className="flex items-center gap-1.5">
+                                            <h4 className="truncate text-xs font-semibold leading-tight">{list.name}</h4>
                                             {technology && (
                                                 <span
-                                                    className="rounded-full border px-2 py-[2px] text-[10px] font-semibold"
+                                                    className="rounded-full border px-1.5 py-[1px] text-[9px] font-semibold"
                                                     style={{
                                                         color: technologyColor,
                                                         backgroundColor: `${technologyColor}1a`,
@@ -69,21 +68,15 @@ export function EmptyListsSidebar({
                                                 </span>
                                             )}
                                         </div>
-                                        <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
+                                        <div className="flex flex-wrap items-center gap-1.5 text-[10px] text-muted-foreground">
                                             <span>Req: {stats.totalRequirements}</span>
                                             {list.owner && (
                                                 <>
                                                     <span className="text-muted-foreground/50">&middot;</span>
-                                                    <span className="flex items-center gap-1 truncate">
-                                                        <User className="h-3 w-3" />
+                                                    <span className="flex items-center gap-0.5 truncate">
+                                                        <User className="h-2.5 w-2.5" />
                                                         {list.owner}
                                                     </span>
-                                                </>
-                                            )}
-                                            {createdOn && (
-                                                <>
-                                                    <span className="text-muted-foreground/50">&middot;</span>
-                                                    <span>{createdOn}</span>
                                                 </>
                                             )}
                                         </div>
@@ -95,9 +88,9 @@ export function EmptyListsSidebar({
                                             event.stopPropagation();
                                             onDeleteList(list);
                                         }}
-                                        className="h-7 w-7 shrink-0 text-muted-foreground hover:text-red-600"
+                                        className="h-6 w-6 shrink-0 text-muted-foreground hover:text-red-600"
                                     >
-                                        <Trash2 className="h-3.5 w-3.5" />
+                                        <Trash2 className="h-3 w-3" />
                                     </Button>
                                 </div>
                             </CardContent>

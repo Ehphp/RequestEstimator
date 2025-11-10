@@ -274,10 +274,10 @@ export function DashboardView({ list, requirements, onBack, onSelectRequirement 
     };
 
     return (
-        <div className="space-y-4">
+        <div className="space-y-2">
             {/* Header con metriche integrate */}
             <div className="flex items-center justify-end">
-                <div className="flex items-center gap-4 text-sm">
+                <div className="flex items-center gap-3 text-xs">
                     {filteredReqs.length === requirements.length ? (
                         <>
                             <span className="font-semibold">{filteredReqs.length} requisiti</span>
@@ -403,7 +403,7 @@ export function DashboardView({ list, requirements, onBack, onSelectRequirement 
                         <UITooltip>
                             <TooltipTrigger asChild>
                                 <div className="flex items-center gap-2">
-                                    <div className="relative h-6 flex-1 bg-gradient-to-r from-blue-50 via-blue-100 to-blue-50 dark:from-blue-950 dark:via-blue-900 dark:to-blue-950 rounded-md overflow-hidden border cursor-help">
+                                    <div className="relative h-5 flex-1 bg-gradient-to-r from-blue-50 via-blue-100 to-blue-50 dark:from-blue-950 dark:via-blue-900 dark:to-blue-950 rounded-md overflow-hidden border cursor-help">
                                         {/* Baseline marker al 50% */}
                                         <div className="absolute left-1/2 top-0 bottom-0 w-0.5 bg-blue-400 dark:bg-blue-600 opacity-50" />
 
@@ -423,7 +423,7 @@ export function DashboardView({ list, requirements, onBack, onSelectRequirement 
 
                                         {/* Label centrale */}
                                         <div className="absolute inset-0 flex items-center justify-center">
-                                            <span className="text-xs font-bold text-gray-900 dark:text-gray-100 drop-shadow-sm px-2 py-0.5 bg-white/60 dark:bg-black/40 rounded">
+                                            <span className="text-[10px] font-bold text-gray-900 dark:text-gray-100 drop-shadow-sm px-2 py-0.5 bg-white/60 dark:bg-black/40 rounded">
                                                 Velocity: {velocity.toFixed(2)}x
                                                 {isHealthy && ' ✓'}
                                                 {!isHealthy && delta > 0 && ' ⚠️'}
@@ -523,16 +523,18 @@ export function DashboardView({ list, requirements, onBack, onSelectRequirement 
             })()}
 
             {/* KPI Row compatta - 5 cards inline con hover expansion */}
-            <div className="grid grid-cols-5 gap-2">
+            <div className="grid grid-cols-5 gap-1.5">
                 {/* Card 1: Metriche Base - Compatta con hover */}
                 <Card className="border-l-4 border-l-blue-500 group">
-                    <CardContent className="p-2">
-                        <div className="text-xs text-muted-foreground mb-0.5">Metriche</div>
+                    <CardContent className="p-1.5">
+                        <div className="flex items-baseline justify-between">
+                            <div className="text-[10px] text-muted-foreground">Metriche</div>
+                        </div>
                         <TooltipProvider>
                             <UITooltip>
                                 <TooltipTrigger asChild>
                                     <div className="cursor-help">
-                                        <div className="text-2xl font-bold text-blue-600 flex items-center">
+                                        <div className="text-lg font-bold text-blue-600 flex items-center leading-none mt-0.5">
                                             {kpis.totalDays}
                                             {sparklineData.estimates.length >= 3 && (
                                                 <MiniSparkline
@@ -549,7 +551,7 @@ export function DashboardView({ list, requirements, onBack, onSelectRequirement 
                                                 <span className="text-red-500 text-xs ml-1" title="Attenzione: progetto molto grande">🔴</span>
                                             )}
                                         </div>
-                                        <div className="text-xs text-muted-foreground">gg totali</div>
+                                        <div className="text-[9px] text-muted-foreground leading-none">gg totali</div>
                                     </div>
                                 </TooltipTrigger>
                                 <TooltipContent side="top" className="max-w-[200px]">
@@ -582,14 +584,16 @@ export function DashboardView({ list, requirements, onBack, onSelectRequirement 
 
                 {/* Card 2: Priority Mix - Compatta */}
                 <Card className="border-l-4 border-l-red-500 group">
-                    <CardContent className="p-2">
-                        <div className="text-xs text-muted-foreground mb-0.5">Priority</div>
+                    <CardContent className="p-1.5">
+                        <div className="flex items-baseline justify-between mb-0.5">
+                            <div className="text-[10px] text-muted-foreground">Priority</div>
+                        </div>
                         <TooltipProvider>
-                            <div className="space-y-1">
+                            <div className="space-y-0.5">
                                 <div className="flex items-center justify-center gap-1">
                                     <UITooltip>
                                         <TooltipTrigger asChild>
-                                            <Badge className={getPrioritySolidClass('High') + ' cursor-help text-xs px-1.5 py-0'}>
+                                            <Badge className={getPrioritySolidClass('High') + ' cursor-help text-[10px] px-1 py-0 h-4'}>
                                                 H
                                             </Badge>
                                         </TooltipTrigger>
@@ -602,7 +606,7 @@ export function DashboardView({ list, requirements, onBack, onSelectRequirement 
 
                                     <UITooltip>
                                         <TooltipTrigger asChild>
-                                            <Badge className={getPrioritySolidClass('Med') + ' cursor-help text-xs px-1.5 py-0'}>
+                                            <Badge className={getPrioritySolidClass('Med') + ' cursor-help text-[10px] px-1 py-0 h-4'}>
                                                 M
                                             </Badge>
                                         </TooltipTrigger>
@@ -615,7 +619,7 @@ export function DashboardView({ list, requirements, onBack, onSelectRequirement 
 
                                     <UITooltip>
                                         <TooltipTrigger asChild>
-                                            <Badge className={getPrioritySolidClass('Low') + ' cursor-help text-xs px-1.5 py-0'}>
+                                            <Badge className={getPrioritySolidClass('Low') + ' cursor-help text-[10px] px-1 py-0 h-4'}>
                                                 L
                                             </Badge>
                                         </TooltipTrigger>
@@ -628,7 +632,7 @@ export function DashboardView({ list, requirements, onBack, onSelectRequirement 
                                 </div>
 
                                 {/* Mini stacked bar - effort % per priority */}
-                                <div className="w-full h-1.5 flex rounded-full overflow-hidden opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                                <div className="w-full h-1 flex rounded-full overflow-hidden opacity-0 group-hover:opacity-100 transition-opacity duration-300">
                                     <UITooltip>
                                         <TooltipTrigger asChild>
                                             <div
@@ -670,21 +674,23 @@ export function DashboardView({ list, requirements, onBack, onSelectRequirement 
 
                 {/* Card 3: Mix Difficoltà - Compatta con cerchi */}
                 <Card className="border-l-4 border-l-green-500 group">
-                    <CardContent className="p-2">
-                        <div className="text-xs text-muted-foreground mb-0.5">Difficoltà</div>
+                    <CardContent className="p-1.5">
+                        <div className="flex items-baseline justify-between mb-0.5">
+                            <div className="text-[10px] text-muted-foreground">Difficoltà</div>
+                        </div>
                         <TooltipProvider>
-                            <div className="flex items-center justify-center gap-1.5 group-hover:gap-2 transition-all duration-300">
+                            <div className="flex items-center justify-center gap-1 group-hover:gap-1.5 transition-all duration-300">
                                 {/* Low - Verde */}
                                 <UITooltip>
                                     <TooltipTrigger asChild>
                                         <div
                                             className="rounded-full bg-green-500 flex items-center justify-center text-white font-bold cursor-help transition-all duration-300 group-hover:scale-110"
                                             style={{
-                                                width: `${Math.max(20, Math.min(36, 20 + (kpis.difficultyMix.low || 0) * 2))}px`,
-                                                height: `${Math.max(20, Math.min(36, 20 + (kpis.difficultyMix.low || 0) * 2))}px`,
+                                                width: `${Math.max(16, Math.min(28, 16 + (kpis.difficultyMix.low || 0) * 1.5))}px`,
+                                                height: `${Math.max(16, Math.min(28, 16 + (kpis.difficultyMix.low || 0) * 1.5))}px`,
                                             }}
                                         >
-                                            <span className="text-[10px] opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                                            <span className="text-[9px] opacity-0 group-hover:opacity-100 transition-opacity duration-300">
                                                 {kpis.difficultyMix.low || 0}
                                             </span>
                                         </div>
@@ -701,11 +707,11 @@ export function DashboardView({ list, requirements, onBack, onSelectRequirement 
                                         <div
                                             className="rounded-full bg-yellow-500 flex items-center justify-center text-white font-bold cursor-help transition-all duration-300 group-hover:scale-110"
                                             style={{
-                                                width: `${Math.max(20, Math.min(36, 20 + (kpis.difficultyMix.medium || 0) * 2))}px`,
-                                                height: `${Math.max(20, Math.min(36, 20 + (kpis.difficultyMix.medium || 0) * 2))}px`,
+                                                width: `${Math.max(16, Math.min(28, 16 + (kpis.difficultyMix.medium || 0) * 1.5))}px`,
+                                                height: `${Math.max(16, Math.min(28, 16 + (kpis.difficultyMix.medium || 0) * 1.5))}px`,
                                             }}
                                         >
-                                            <span className="text-[10px] opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                                            <span className="text-[9px] opacity-0 group-hover:opacity-100 transition-opacity duration-300">
                                                 {kpis.difficultyMix.medium || 0}
                                             </span>
                                         </div>
@@ -722,11 +728,11 @@ export function DashboardView({ list, requirements, onBack, onSelectRequirement 
                                         <div
                                             className="rounded-full bg-red-500 flex items-center justify-center text-white font-bold cursor-help transition-all duration-300 group-hover:scale-110"
                                             style={{
-                                                width: `${Math.max(20, Math.min(36, 20 + (kpis.difficultyMix.high || 0) * 2))}px`,
-                                                height: `${Math.max(20, Math.min(36, 20 + (kpis.difficultyMix.high || 0) * 2))}px`,
+                                                width: `${Math.max(16, Math.min(28, 16 + (kpis.difficultyMix.high || 0) * 1.5))}px`,
+                                                height: `${Math.max(16, Math.min(28, 16 + (kpis.difficultyMix.high || 0) * 1.5))}px`,
                                             }}
                                         >
-                                            <span className="text-[10px] opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                                            <span className="text-[9px] opacity-0 group-hover:opacity-100 transition-opacity duration-300">
                                                 {kpis.difficultyMix.high || 0}
                                             </span>
                                         </div>
@@ -738,18 +744,18 @@ export function DashboardView({ list, requirements, onBack, onSelectRequirement 
                                 </UITooltip>
                             </div>
                             {/* Mini radial gauge per % difficoltà alta */}
-                            <div className="flex items-center justify-center mt-1 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                                <span className="text-[10px] text-muted-foreground mr-1">High:</span>
+                            <div className="flex items-center justify-center mt-0.5 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                                <span className="text-[9px] text-muted-foreground mr-0.5">High:</span>
                                 <MiniRadialGauge
                                     percentage={(() => {
                                         const total = kpis.difficultyMix.low + kpis.difficultyMix.medium + kpis.difficultyMix.high;
                                         return total > 0 ? Math.round((kpis.difficultyMix.high / total) * 100) : 0;
                                     })()}
-                                    size={20}
-                                    strokeWidth={2.5}
+                                    size={16}
+                                    strokeWidth={2}
                                     color="#ef4444"
                                 />
-                                <span className="text-[10px] font-semibold ml-0.5">
+                                <span className="text-[9px] font-semibold ml-0.5">
                                     {(() => {
                                         const total = kpis.difficultyMix.low + kpis.difficultyMix.medium + kpis.difficultyMix.high;
                                         return total > 0 ? Math.round((kpis.difficultyMix.high / total) * 100) : 0;
@@ -763,19 +769,19 @@ export function DashboardView({ list, requirements, onBack, onSelectRequirement 
                 {/* Card 4: Top Tag per Effort - Compatta con Tooltip */}
                 {kpis.topTagByEffort && (
                     <Card className="border-l-4 border-l-blue-500">
-                        <CardContent className="p-2">
+                        <CardContent className="p-1.5">
                             <TooltipProvider>
                                 <UITooltip>
                                     <TooltipTrigger asChild>
                                         <div className="cursor-help">
-                                            <div className="flex items-center justify-between mb-0.5">
-                                                <span className="text-xs text-muted-foreground">Top Tag</span>
+                                            <div className="flex items-baseline justify-between mb-0.5">
+                                                <span className="text-[10px] text-muted-foreground">Top Tag</span>
                                             </div>
                                             <div className="flex items-center justify-between">
-                                                <Badge variant="outline" className="text-xs truncate max-w-[80px]">
+                                                <Badge variant="outline" className="text-[9px] truncate max-w-[70px] px-1 py-0 h-4">
                                                     {kpis.topTagByEffort.tag}
                                                 </Badge>
-                                                <span className="text-lg font-bold text-blue-600">
+                                                <span className="text-base font-bold text-blue-600 leading-none">
                                                     {kpis.topTagByEffort.effort}gg
                                                 </span>
                                             </div>
@@ -805,23 +811,23 @@ export function DashboardView({ list, requirements, onBack, onSelectRequirement 
 
                 {/* Card 5: Timeline - Compatta */}
                 <Card className="border-l-4 border-l-purple-500">
-                    <CardContent className="p-2">
-                        <div className="flex items-center justify-between mb-0.5">
-                            <span className="text-xs text-muted-foreground">Timeline</span>
+                    <CardContent className="p-1.5">
+                        <div className="flex items-baseline justify-between mb-0.5">
+                            <span className="text-[10px] text-muted-foreground">Timeline</span>
                             <Button
                                 variant="ghost"
                                 size="sm"
-                                className="h-4 px-1.5 text-[10px] hover:bg-purple-100 dark:hover:bg-purple-900"
+                                className="h-3.5 px-1 text-[9px] hover:bg-purple-100 dark:hover:bg-purple-900"
                                 onClick={() => setPriorityPolicy(priorityPolicy === 'Neutral' ? 'PriorityFirst' : 'Neutral')}
                                 title={`Cambia strategia: ${priorityPolicy}`}
                             >
                                 ⇄
                             </Button>
                         </div>
-                        <div className="text-2xl font-bold text-purple-600">
+                        <div className="text-lg font-bold text-purple-600 leading-none">
                             {formatDate(projection.finishDate)}
                         </div>
-                        <div className="text-xs text-muted-foreground">
+                        <div className="text-[9px] text-muted-foreground leading-none mt-0.5">
                             {projection.totalWorkdays} gg da {formatDate(filters.startDate)}
                         </div>
                     </CardContent>
@@ -830,7 +836,7 @@ export function DashboardView({ list, requirements, onBack, onSelectRequirement 
 
             {/* Deviation Alerts Bar */}
             {alerts.length > 0 && (
-                <div className="flex items-center gap-2 px-3 py-1.5 bg-muted/50 rounded-md border">
+                <div className="flex items-center gap-2 px-2 py-1 bg-muted/50 rounded-md border">
                     <TooltipProvider>
                         {alerts.map((alert, idx) => (
                             <UITooltip key={idx}>
@@ -860,7 +866,7 @@ export function DashboardView({ list, requirements, onBack, onSelectRequirement 
             {/* Risk Heatmap Matrix */}
             {riskHeatmapData.maxCount > 0 && (
                 <Card className="border-l-4 border-l-orange-500">
-                    <CardHeader className="pb-2 px-3 pt-2">
+                    <CardHeader className="pb-1 px-2 pt-1.5">
                         <div className="flex items-center justify-between">
                             <CardTitle className="text-sm">Risk/Priority Correlation</CardTitle>
                             <TooltipProvider>
@@ -878,8 +884,8 @@ export function DashboardView({ list, requirements, onBack, onSelectRequirement 
                             </TooltipProvider>
                         </div>
                     </CardHeader>
-                    <CardContent className="px-3 pb-2">
-                        <div className="grid grid-cols-5 gap-1 text-[10px]">
+                    <CardContent className="px-2 pb-1.5">
+                        <div className="grid grid-cols-5 gap-0.5 text-[10px]">
                             {/* Header row */}
                             <div className="text-right pr-1 text-muted-foreground font-semibold"></div>
                             <div className="text-center text-muted-foreground font-semibold">None</div>
@@ -981,12 +987,12 @@ export function DashboardView({ list, requirements, onBack, onSelectRequirement 
                 </Card>
             )}
 
-            <div className="grid grid-cols-1 lg:grid-cols-4 gap-2">
+            <div className="grid grid-cols-1 lg:grid-cols-4 gap-1.5">
                 {/* Colonna sinistra: Grafici principali (3 colonne) */}
-                <div className="lg:col-span-3 grid grid-cols-1 md:grid-cols-2 gap-2">
+                <div className="lg:col-span-3 grid grid-cols-1 md:grid-cols-2 gap-1.5">
                     {/* Treemap */}
                     <Card className="flex flex-col md:col-span-2">
-                        <CardHeader className="pb-1 px-3 pt-2">
+                        <CardHeader className="pb-1 px-2 pt-1.5">
                             <div className="flex items-center justify-between">
                                 <CardTitle className="text-sm">Treemap Requisiti</CardTitle>
                                 <TooltipProvider>
@@ -1006,7 +1012,7 @@ export function DashboardView({ list, requirements, onBack, onSelectRequirement 
                                 </TooltipProvider>
                             </div>
                         </CardHeader>
-                        <CardContent className="flex-1 p-0 px-1 pb-1">
+                        <CardContent className="flex-1 p-0 px-1 pb-1 min-h-[280px] max-h-[280px]">
                             <TreemapApexRequirements
                                 requirements={filteredReqs.map(r => ({
                                     requirement: r.requirement,
@@ -1169,23 +1175,23 @@ export function DashboardView({ list, requirements, onBack, onSelectRequirement 
 
                 {/* Colonna destra: Pannello filtri compatto desktop (1 colonna) */}
                 <div className="hidden lg:block lg:col-span-1">
-                    <Card className="sticky top-4 h-fit">
-                        <CardHeader className="pb-2 px-3 pt-3">
-                            <CardTitle className="text-sm">Controlli</CardTitle>
+                    <Card className="sticky top-2 h-fit max-h-[calc(100vh-8rem)] overflow-auto">
+                        <CardHeader className="pb-1.5 px-2 pt-2">
+                            <CardTitle className="text-xs">Controlli</CardTitle>
                         </CardHeader>
-                        <CardContent className="p-0 pb-2">
+                        <CardContent className="p-0 pb-1.5">
                             <Tabs defaultValue="scenario" className="w-full">
-                                <TabsList className="grid w-full grid-cols-2 h-7 mx-3">
-                                    <TabsTrigger value="scenario" className="text-xs py-1">Scenario</TabsTrigger>
-                                    <TabsTrigger value="filtri" className="text-xs py-1">Filtri</TabsTrigger>
+                                <TabsList className="grid w-full grid-cols-2 h-6 mx-2">
+                                    <TabsTrigger value="scenario" className="text-[10px] py-0.5">Scenario</TabsTrigger>
+                                    <TabsTrigger value="filtri" className="text-[10px] py-0.5">Filtri</TabsTrigger>
                                 </TabsList>
 
-                                <TabsContent value="scenario" className="space-y-2 mt-2 px-3">
+                                <TabsContent value="scenario" className="space-y-1.5 mt-1.5 px-2">
                                     {/* Date Range */}
-                                    <div className="space-y-2 pb-2 border-b">
+                                    <div className="space-y-1.5 pb-1.5 border-b">
                                         <div>
-                                            <Label htmlFor="startDate" className="flex items-center gap-1.5 text-xs mb-0.5">
-                                                <Calendar className="h-3 w-3" />
+                                            <Label htmlFor="startDate" className="flex items-center gap-1 text-[10px] mb-0.5">
+                                                <Calendar className="h-2.5 w-2.5" />
                                                 Data inizio
                                             </Label>
                                             <Input
@@ -1193,13 +1199,13 @@ export function DashboardView({ list, requirements, onBack, onSelectRequirement 
                                                 type="date"
                                                 value={filters.startDate}
                                                 onChange={(e) => setFilters({ ...filters, startDate: e.target.value })}
-                                                className="h-7 text-xs"
+                                                className="h-6 text-[10px]"
                                             />
                                         </div>
 
                                         <div>
-                                            <Label htmlFor="targetDate" className="flex items-center gap-1.5 text-xs mb-0.5">
-                                                <Calendar className="h-3 w-3 text-red-500" />
+                                            <Label htmlFor="targetDate" className="flex items-center gap-1 text-[10px] mb-0.5">
+                                                <Calendar className="h-2.5 w-2.5 text-red-500" />
                                                 Data obiettivo
                                             </Label>
                                             <Input
@@ -1207,11 +1213,11 @@ export function DashboardView({ list, requirements, onBack, onSelectRequirement 
                                                 type="date"
                                                 value={filters.targetDate || ''}
                                                 onChange={(e) => setFilters({ ...filters, targetDate: e.target.value || undefined })}
-                                                className="h-7 text-xs"
+                                                className="h-6 text-[10px]"
                                                 placeholder="Opzionale"
                                             />
                                             {filters.targetDate && (
-                                                <p className="text-[10px] text-muted-foreground mt-0.5">
+                                                <p className="text-[9px] text-muted-foreground mt-0.5">
                                                     Target: {formatDate(filters.targetDate)}
                                                 </p>
                                             )}
@@ -1219,10 +1225,10 @@ export function DashboardView({ list, requirements, onBack, onSelectRequirement 
                                     </div>
 
                                     {/* Team Configuration */}
-                                    <div className="space-y-2 pb-2 border-b">
+                                    <div className="space-y-1.5 pb-1.5 border-b">
                                         <div>
-                                            <Label htmlFor="nDevelopers" className="flex items-center gap-1.5 text-xs mb-0.5">
-                                                <Users className="h-3 w-3" />
+                                            <Label htmlFor="nDevelopers" className="flex items-center gap-1 text-[10px] mb-0.5">
+                                                <Users className="h-2.5 w-2.5" />
                                                 Team size
                                             </Label>
                                             <Input
@@ -1232,30 +1238,30 @@ export function DashboardView({ list, requirements, onBack, onSelectRequirement 
                                                 max="20"
                                                 value={filters.nDevelopers}
                                                 onChange={(e) => setFilters({ ...filters, nDevelopers: parseInt(e.target.value) || 1 })}
-                                                className="h-7 text-xs"
+                                                className="h-6 text-[10px]"
                                             />
-                                            <p className="text-[10px] text-muted-foreground mt-0.5">
+                                            <p className="text-[9px] text-muted-foreground mt-0.5">
                                                 {filters.nDevelopers} sviluppatore{filters.nDevelopers > 1 ? 'i' : ''}
                                             </p>
                                         </div>
                                     </div>
 
                                     {/* Calendar Options */}
-                                    <div className="space-y-2">
-                                        <div className="flex items-center space-x-2 py-0.5">
+                                    <div className="space-y-1.5">
+                                        <div className="flex items-center space-x-1.5 py-0.5">
                                             <Checkbox
                                                 id="excludeWeekends"
                                                 checked={filters.excludeWeekends}
                                                 onCheckedChange={(checked) => setFilters({ ...filters, excludeWeekends: checked as boolean })}
-                                                className="h-3.5 w-3.5"
+                                                className="h-3 w-3"
                                             />
-                                            <Label htmlFor="excludeWeekends" className="text-xs cursor-pointer">
+                                            <Label htmlFor="excludeWeekends" className="text-[10px] cursor-pointer">
                                                 Escludi weekend
                                             </Label>
                                         </div>
 
                                         <div>
-                                            <Label htmlFor="holidays" className="text-xs mb-0.5 block">
+                                            <Label htmlFor="holidays" className="text-[10px] mb-0.5 block">
                                                 Festività
                                             </Label>
                                             <Input
@@ -1270,10 +1276,10 @@ export function DashboardView({ list, requirements, onBack, onSelectRequirement 
                                                         .filter(h => h.length > 0);
                                                     setFilters({ ...filters, holidays: holidayList });
                                                 }}
-                                                className="h-7 text-xs"
+                                                className="h-6 text-[10px]"
                                             />
                                             {filters.holidays.length > 0 && (
-                                                <p className="text-[10px] text-muted-foreground mt-0.5">
+                                                <p className="text-[9px] text-muted-foreground mt-0.5">
                                                     {filters.holidays.length} festività
                                                 </p>
                                             )}
@@ -1281,44 +1287,44 @@ export function DashboardView({ list, requirements, onBack, onSelectRequirement 
                                     </div>
                                 </TabsContent>
 
-                                <TabsContent value="filtri" className="space-y-2 mt-2 px-3">
+                                <TabsContent value="filtri" className="space-y-1.5 mt-1.5 px-2">
                                     {/* Filtro priorità */}
                                     <div>
-                                        <Label className="text-xs mb-1 block">Filtro Priorità</Label>
-                                        <div className="space-y-1.5">
-                                            <div className="flex items-center space-x-2">
+                                        <Label className="text-[10px] mb-1 block">Filtro Priorità</Label>
+                                        <div className="space-y-1">
+                                            <div className="flex items-center space-x-1.5">
                                                 <Checkbox
                                                     id="priority-high"
                                                     checked={filters.priorities.includes('High')}
                                                     onCheckedChange={() => handleTogglePriority('High')}
-                                                    className="h-3.5 w-3.5"
+                                                    className="h-3 w-3"
                                                 />
-                                                <Label htmlFor="priority-high" className="flex items-center gap-2 text-xs">
-                                                    <Badge className={getPrioritySolidClass('High') + ' text-[10px] px-1.5 py-0'}>H</Badge>
+                                                <Label htmlFor="priority-high" className="flex items-center gap-1.5 text-[10px]">
+                                                    <Badge className={getPrioritySolidClass('High') + ' text-[9px] px-1 py-0'}>H</Badge>
                                                     <span>{kpis.priorityMix.High} req</span>
                                                 </Label>
                                             </div>
-                                            <div className="flex items-center space-x-2">
+                                            <div className="flex items-center space-x-1.5">
                                                 <Checkbox
                                                     id="priority-med"
                                                     checked={filters.priorities.includes('Med')}
                                                     onCheckedChange={() => handleTogglePriority('Med')}
-                                                    className="h-3.5 w-3.5"
+                                                    className="h-3 w-3"
                                                 />
-                                                <Label htmlFor="priority-med" className="flex items-center gap-2 text-xs">
-                                                    <Badge className={getPrioritySolidClass('Med') + ' text-[10px] px-1.5 py-0'}>M</Badge>
+                                                <Label htmlFor="priority-med" className="flex items-center gap-1.5 text-[10px]">
+                                                    <Badge className={getPrioritySolidClass('Med') + ' text-[9px] px-1 py-0'}>M</Badge>
                                                     <span>{kpis.priorityMix.Med} req</span>
                                                 </Label>
                                             </div>
-                                            <div className="flex items-center space-x-2">
+                                            <div className="flex items-center space-x-1.5">
                                                 <Checkbox
                                                     id="priority-low"
                                                     checked={filters.priorities.includes('Low')}
                                                     onCheckedChange={() => handleTogglePriority('Low')}
-                                                    className="h-3.5 w-3.5"
+                                                    className="h-3 w-3"
                                                 />
-                                                <Label htmlFor="priority-low" className="flex items-center gap-2 text-xs">
-                                                    <Badge className={getPrioritySolidClass('Low') + ' text-[10px] px-1.5 py-0'}>L</Badge>
+                                                <Label htmlFor="priority-low" className="flex items-center gap-1.5 text-[10px]">
+                                                    <Badge className={getPrioritySolidClass('Low') + ' text-[9px] px-1 py-0'}>L</Badge>
                                                     <span>{kpis.priorityMix.Low} req</span>
                                                 </Label>
                                             </div>

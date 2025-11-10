@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { ArrowLeft, Save, Info, AlertCircle, Copy, Sparkles, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -22,6 +22,7 @@ import { logger } from '@/lib/logger';
 import { useAuth } from '@/contexts/AuthContext';
 import { DefaultPill } from './DefaultPill';
 import { DriverSelect } from './DriverSelect';
+import { ThemeToggle } from './ThemeToggle';
 
 interface EstimateEditorProps {
   requirement: Requirement;
@@ -33,12 +34,8 @@ interface EstimateEditorProps {
 export function EstimateEditor({ requirement, list, onBack, selectedEstimate }: EstimateEditorProps) {
   const { currentUser } = useAuth();
   const { toast } = useToast();
-  const {
-    defaultSources,
-    setDefaultSources,
-    overriddenFields,
-    setOverriddenFields
-  } = useDefaultTracking();
+  const { defaultSources, setDefaultSources, overriddenFields, setOverriddenFields } = useDefaultTracking();
+
   const [scenario, setScenario] = useState('A');
   const [complexity, setComplexity] = useState('');
   const [environments, setEnvironments] = useState('');
@@ -47,40 +44,48 @@ export function EstimateEditor({ requirement, list, onBack, selectedEstimate }: 
   const [selectedActivities, setSelectedActivities] = useState<string[]>([]);
   const [selectedRisks, setSelectedRisks] = useState<string[]>([]);
   const [includeOptional, setIncludeOptional] = useState(false);
+  const [optionalActivities, setOptionalActivities] = useState<string[]>([]);
   const [errors, setErrors] = useState<string[]>([]);
   const [calculatedEstimate, setCalculatedEstimate] = useState<Partial<Estimate> | null>(null);
   const [previousEstimates, setPreviousEstimates] = useState<Estimate[]>([]);
   const [autoCalcReady, setAutoCalcReady] = useState(false);
 
+  // safer unmount flag for async
+  const aliveRef = useRef(true);
+  useEffect(() => {
+    aliveRef.current = true;
+    return () => { aliveRef.current = false; };
+  }, []);
+
+  useEffect(() => {
+    logger.info('EstimateEditor mounted/updated:', {
+      hasSelectedEstimate: !!selectedEstimate,
+      selectedEstimateId: selectedEstimate?.estimate_id,
+      requirementId: requirement.req_id,
+      currentUser
+    });
+  }, [selectedEstimate, requirement, currentUser]);
+
   // Load previous estimates
   useEffect(() => {
-    let isMounted = true;
-
-    const loadEstimates = async () => {
-      const estimates = await getEstimatesByReqId(requirement.req_id);
-      if (isMounted) {
-        setPreviousEstimates(estimates);
+    (async () => {
+      try {
+        const estimates = await getEstimatesByReqId(requirement.req_id);
+        if (aliveRef.current) setPreviousEstimates(estimates);
+      } catch (e) {
+        logger.error('Failed to load previous estimates', e);
       }
-    };
-
-    loadEstimates();
-
-    return () => {
-      isMounted = false;
-    };
+    })();
   }, [requirement.req_id]);
 
   // Initialize form data
   useEffect(() => {
-    let isMounted = true;
     setAutoCalcReady(false);
 
-    const loadInitialData = async () => {
-      if (!currentUser) return;
-
-      // If a specific estimate is selected, load its data
+    (async () => {
       if (selectedEstimate) {
         logger.info('Loading selected estimate data:', { estimate_id: selectedEstimate.estimate_id });
+
         setScenario(selectedEstimate.scenario);
         setComplexity(selectedEstimate.complexity);
         setEnvironments(selectedEstimate.environments);
@@ -89,8 +94,8 @@ export function EstimateEditor({ requirement, list, onBack, selectedEstimate }: 
         setSelectedActivities([...selectedEstimate.included_activities]);
         setSelectedRisks([...selectedEstimate.selected_risks]);
         setIncludeOptional(selectedEstimate.include_optional);
+        setOptionalActivities(selectedEstimate.optional_activities || []);
 
-        // Mark all as overridden when viewing existing estimate
         setOverriddenFields({
           complexity: true,
           environments: true,
@@ -100,10 +105,35 @@ export function EstimateEditor({ requirement, list, onBack, selectedEstimate }: 
           risks: true
         });
         setDefaultSources([]);
-      } else {
-        // Apply smart defaults on first load
+
+        if (aliveRef.current) setAutoCalcReady(true);
+        return;
+      }
+
+      // new estimate defaults - reset everything when selectedEstimate is null
+      logger.info('Loading defaults for new estimate');
+
+      if (!currentUser) {
+        // Reset to empty state if no user
+        setScenario('A');
+        setComplexity('');
+        setEnvironments('');
+        setReuse('');
+        setStakeholders('');
+        setSelectedActivities([]);
+        setSelectedRisks([]);
+        setIncludeOptional(false);
+        setOptionalActivities([]);
+        setDefaultSources([]);
+        setOverriddenFields({});
+
+        if (aliveRef.current) setAutoCalcReady(true);
+        return;
+      }
+
+      try {
         const { defaults, sources } = await getEstimateDefaults(requirement, list, currentUser);
-        if (!isMounted) return;
+        if (!aliveRef.current) return;
 
         setScenario(defaults.scenario || 'A');
         setComplexity(defaults.complexity || '');
@@ -113,31 +143,59 @@ export function EstimateEditor({ requirement, list, onBack, selectedEstimate }: 
         setSelectedActivities(defaults.included_activities || []);
         setSelectedRisks(defaults.selected_risks || []);
         setIncludeOptional(defaults.include_optional || false);
-
+        setOptionalActivities(defaults.optional_activities || []);
         setDefaultSources(sources);
+      } catch (e) {
+        logger.error('Failed to load defaults', e);
+      } finally {
+        if (aliveRef.current) setAutoCalcReady(true);
       }
+    })();
+  }, [
+    selectedEstimate?.estimate_id,
+    requirement.req_id,
+    list.list_id,
+    currentUser,
+    setOverriddenFields,
+    setDefaultSources
+  ]);
 
-      if (isMounted) {
-        setAutoCalcReady(true);
-      }
-    };
+  // === MEMOS & DERIVED ===
+  const groupedActivities = useMemo(() => {
+    return activities.reduce((groups, activity) => {
+      const group = activity.driver_group;
+      if (!groups[group]) groups[group] = [];
+      groups[group].push(activity);
+      return groups;
+    }, {} as Record<string, Activity[]>);
+  }, []); // activities è statico importato
 
-    loadInitialData();
+  const lastGroupKey = useMemo(() => {
+    const keys = Object.keys(groupedActivities);
+    return keys.length ? keys[keys.length - 1] : undefined;
+  }, [groupedActivities]);
 
-    return () => {
-      isMounted = false;
-    };
-  }, [selectedEstimate?.estimate_id, requirement.req_id, list, currentUser]);
-
-  const groupedActivities = activities.reduce((groups, activity) => {
-    const group = activity.driver_group;
-    if (!groups[group]) groups[group] = [];
-    groups[group].push(activity);
-    return groups;
-  }, {} as Record<string, Activity[]>);
   const selectedActivityObjects = useMemo(
     () => activities.filter(a => selectedActivities.includes(a.activity_code)),
     [selectedActivities]
+  );
+
+  const optionalActivityObjects = useMemo(
+    () => activities.filter(a => optionalActivities.includes(a.activity_code)),
+    [optionalActivities]
+  );
+
+  const combinedSelectedActivityObjects = useMemo(() => {
+    if (!includeOptional || optionalActivityObjects.length === 0) return selectedActivityObjects;
+    const optionalOnly = optionalActivityObjects.filter(
+      opt => !selectedActivityObjects.some(sel => sel.activity_code === opt.activity_code)
+    );
+    return [...selectedActivityObjects, ...optionalOnly];
+  }, [includeOptional, optionalActivityObjects, selectedActivityObjects]);
+
+  const optionalActivitiesTotalDays = useMemo(
+    () => optionalActivityObjects.reduce((sum, a) => sum + a.base_days, 0),
+    [optionalActivityObjects]
   );
 
   const calculateAndUpdateEstimate = useCallback(() => {
@@ -146,7 +204,7 @@ export function EstimateEditor({ requirement, list, onBack, selectedEstimate }: 
       environments,
       reuse,
       stakeholders,
-      selectedActivityObjects
+      combinedSelectedActivityObjects
     );
 
     if (validationErrors.length > 0) {
@@ -159,7 +217,7 @@ export function EstimateEditor({ requirement, list, onBack, selectedEstimate }: 
 
     try {
       const estimate = calculateEstimate(
-        selectedActivityObjects,
+        combinedSelectedActivityObjects,
         complexity,
         environments,
         reuse,
@@ -172,12 +230,38 @@ export function EstimateEditor({ requirement, list, onBack, selectedEstimate }: 
       setErrors([error instanceof Error ? error.message : 'Errore nel calcolo']);
       setCalculatedEstimate(null);
     }
-  }, [complexity, environments, reuse, stakeholders, selectedActivityObjects, selectedRisks]);
+  }, [complexity, environments, reuse, stakeholders, combinedSelectedActivityObjects, selectedRisks]);
 
   useEffect(() => {
-    if (!autoCalcReady) return;
-    calculateAndUpdateEstimate();
+    if (autoCalcReady) calculateAndUpdateEstimate();
   }, [autoCalcReady, calculateAndUpdateEstimate]);
+
+  // debug state
+  useEffect(() => {
+    logger.info('EstimateEditor state:', {
+      scenario,
+      complexity,
+      environments,
+      reuse,
+      stakeholders,
+      selectedActivitiesCount: selectedActivities.length,
+      selectedRisksCount: selectedRisks.length,
+      includeOptional,
+      autoCalcReady,
+      hasCalculatedEstimate: !!calculatedEstimate
+    });
+  }, [
+    scenario,
+    complexity,
+    environments,
+    reuse,
+    stakeholders,
+    selectedActivities,
+    selectedRisks,
+    includeOptional,
+    autoCalcReady,
+    calculatedEstimate
+  ]);
 
   const handleSave = async () => {
     if (!calculatedEstimate) {
@@ -185,65 +269,84 @@ export function EstimateEditor({ requirement, list, onBack, selectedEstimate }: 
       return;
     }
 
-    // Validate using centralized validation
-    const validationErrors = validateEstimate(complexity, environments, reuse, stakeholders, undefined, {
-      validateActivities: false,
-      strictMode: true
-    });
+    const validationErrors = validateEstimate(
+      complexity,
+      environments,
+      reuse,
+      stakeholders,
+      undefined,
+      { validateActivities: false, strictMode: true }
+    );
     if (validationErrors.length > 0) {
       setErrors(validationErrors);
       return;
     }
 
+    const includedActivitiesForSave = includeOptional
+      ? Array.from(new Set([...selectedActivities, ...optionalActivities]))
+      : selectedActivities;
+
+    const estimateId = selectedEstimate?.estimate_id || `EST-${Date.now()}`;
+    const isUpdate = !!selectedEstimate;
+
     const estimate: Estimate = {
-      estimate_id: `EST-${Date.now()}`,
+      estimate_id: estimateId,
       req_id: requirement.req_id,
       scenario,
       complexity: complexity as Estimate['complexity'],
       environments: environments as Estimate['environments'],
       reuse: reuse as Estimate['reuse'],
       stakeholders: stakeholders as Estimate['stakeholders'],
-      included_activities: selectedActivities,
-      optional_activities: [],
+      included_activities: includedActivitiesForSave,
+      optional_activities: includeOptional ? optionalActivities : [],
       include_optional: includeOptional,
       selected_risks: selectedRisks,
-      created_on: new Date().toISOString(),
-      // Add default source tracking
+      created_on: selectedEstimate?.created_on || new Date().toISOString(),
       complexity_default_source: overriddenFields.complexity ? undefined : defaultSources.find(s => s.field === 'complexity')?.source,
-      complexity_is_overridden: overriddenFields.complexity || false,
+      complexity_is_overridden: !!overriddenFields.complexity,
       environments_default_source: overriddenFields.environments ? undefined : defaultSources.find(s => s.field === 'environments')?.source,
-      environments_is_overridden: overriddenFields.environments || false,
+      environments_is_overridden: !!overriddenFields.environments,
       reuse_default_source: overriddenFields.reuse ? undefined : defaultSources.find(s => s.field === 'reuse')?.source,
-      reuse_is_overridden: overriddenFields.reuse || false,
+      reuse_is_overridden: !!overriddenFields.reuse,
       stakeholders_default_source: overriddenFields.stakeholders ? undefined : defaultSources.find(s => s.field === 'stakeholders')?.source,
-      stakeholders_is_overridden: overriddenFields.stakeholders || false,
+      stakeholders_is_overridden: !!overriddenFields.stakeholders,
       activities_default_source: overriddenFields.activities ? undefined : defaultSources.find(s => s.field === 'activities')?.source,
-      activities_is_overridden: overriddenFields.activities || false,
+      activities_is_overridden: !!overriddenFields.activities,
       risks_default_source: overriddenFields.risks ? undefined : defaultSources.find(s => s.field === 'risks')?.source,
-      risks_is_overridden: overriddenFields.risks || false,
+      risks_is_overridden: !!overriddenFields.risks,
       default_json: JSON.stringify(defaultSources),
       ...calculatedEstimate
     } as Estimate;
 
-    await saveEstimate(estimate);
-
-    // Update sticky defaults for future estimates (if user is authenticated)
-    if (currentUser) {
-      await updateStickyDefaults(currentUser, list.list_id, {
-        complexity: complexity as Estimate['complexity'],
-        environments: environments as Estimate['environments'],
-        reuse: reuse as Estimate['reuse'],
-        stakeholders: stakeholders as Estimate['stakeholders'],
-        included_activities: selectedActivities
-      });
-    }
-
-    // Show success toast
-    toast({
-      title: 'Stima salvata',
-      description: `Totale: ${calculatedEstimate.total_days} giorni`,
+    logger.info(isUpdate ? 'Updating existing estimate' : 'Creating new estimate', {
+      estimate_id: estimateId,
+      req_id: requirement.req_id,
+      scenario,
+      total_days: calculatedEstimate.total_days
     });
-    onBack();
+
+    try {
+      await saveEstimate(estimate);
+
+      if (currentUser) {
+        await updateStickyDefaults(currentUser, list.list_id, {
+          complexity: complexity as Estimate['complexity'],
+          environments: environments as Estimate['environments'],
+          reuse: reuse as Estimate['reuse'],
+          stakeholders: stakeholders as Estimate['stakeholders'],
+          included_activities: selectedActivities
+        });
+      }
+
+      toast({
+        title: isUpdate ? 'Stima aggiornata' : 'Stima creata',
+        description: `${isUpdate ? 'Modifiche salvate' : 'Nuova stima'}: ${calculatedEstimate.total_days} giorni`,
+      });
+      onBack();
+    } catch (e) {
+      logger.error('Saving estimate failed', e);
+      setErrors(['Salvataggio fallito. Riprova o verifica la persistenza locale.']);
+    }
   };
 
   const handleCloneEstimate = (estimate: Estimate) => {
@@ -255,10 +358,10 @@ export function EstimateEditor({ requirement, list, onBack, selectedEstimate }: 
     setSelectedActivities([...estimate.included_activities]);
     setSelectedRisks([...estimate.selected_risks]);
     setIncludeOptional(estimate.include_optional);
+    setOptionalActivities(estimate.optional_activities || []);
     setCalculatedEstimate(null);
     setErrors([]);
 
-    // Mark all as overridden when cloning
     setOverriddenFields({
       complexity: true,
       environments: true,
@@ -270,40 +373,25 @@ export function EstimateEditor({ requirement, list, onBack, selectedEstimate }: 
     setDefaultSources([]);
   };
 
-  const handleToggleOverride = async (field: string) => {
-    setOverriddenFields(prev => ({
-      ...prev,
-      [field]: !prev[field]
-    }));
+  const handleToggleOverride = async (field: keyof typeof overriddenFields) => {
+    const currentlyOverridden = !!overriddenFields[field];
+    setOverriddenFields(prev => ({ ...prev, [field]: !prev[field] }));
 
-    if (!overriddenFields[field] && currentUser) {
-      // If switching back to default, recalculate defaults
-      const { defaults } = await getEstimateDefaults(requirement, list, currentUser);
+    if (currentlyOverridden && currentUser) {
+      const { defaults, sources } = await getEstimateDefaults(requirement, list, currentUser);
+      setDefaultSources(sources);
 
-      if (field === 'complexity' && defaults.complexity) {
-        setComplexity(defaults.complexity);
-      }
-      if (field === 'environments' && defaults.environments) {
-        setEnvironments(defaults.environments);
-      }
-      if (field === 'reuse' && defaults.reuse) {
-        setReuse(defaults.reuse);
-      }
-      if (field === 'stakeholders' && defaults.stakeholders) {
-        setStakeholders(defaults.stakeholders);
-      }
-      if (field === 'activities' && defaults.included_activities) {
-        setSelectedActivities(defaults.included_activities);
-      }
-      if (field === 'risks' && defaults.selected_risks) {
-        setSelectedRisks(defaults.selected_risks);
-      }
+      if (field === 'complexity' && defaults.complexity) setComplexity(defaults.complexity);
+      if (field === 'environments' && defaults.environments) setEnvironments(defaults.environments);
+      if (field === 'reuse' && defaults.reuse) setReuse(defaults.reuse);
+      if (field === 'stakeholders' && defaults.stakeholders) setStakeholders(defaults.stakeholders);
+      if (field === 'activities' && defaults.included_activities) setSelectedActivities(defaults.included_activities);
+      if (field === 'risks' && defaults.selected_risks) setSelectedRisks(defaults.selected_risks);
     }
   };
 
   const handleResetAllDefaults = async () => {
     if (!currentUser) return;
-
     const { defaults, sources } = await resetToDefaults(requirement, list, currentUser);
 
     setComplexity(defaults.complexity || '');
@@ -313,24 +401,20 @@ export function EstimateEditor({ requirement, list, onBack, selectedEstimate }: 
     setSelectedActivities(defaults.included_activities || []);
     setSelectedRisks(defaults.selected_risks || []);
     setIncludeOptional(defaults.include_optional || false);
+    setOptionalActivities(defaults.optional_activities || []);
 
     setDefaultSources(sources);
     setOverriddenFields({});
     setCalculatedEstimate(null);
   };
 
-  const getDefaultSource = (field: string) => {
-    return defaultSources.find(s => s.field === field);
-  };
+  const getDefaultSource = (field: string) => defaultSources.find(s => s.field === field);
 
-  // Calculate total risk weight for display
   const getTotalRiskWeight = () => {
     const selectedRiskObjects = risks.filter(risk => selectedRisks.includes(risk.risk_id));
-    const totalWeight = selectedRiskObjects.reduce((sum, risk) => sum + risk.weight, 0);
-    return totalWeight;
+    return selectedRiskObjects.reduce((sum, risk) => sum + risk.weight, 0);
   };
 
-  // Get risk band based on score
   const getRiskBand = (score: number): { band: string; color: string; bgColor: string } => {
     if (score === 0) return { band: 'None', color: 'text-gray-600 dark:text-gray-400', bgColor: 'bg-gray-100 dark:bg-gray-800' };
     if (score <= 10) return { band: 'Low', color: 'text-green-700 dark:text-green-400', bgColor: 'bg-green-50 dark:bg-green-900/30' };
@@ -338,7 +422,6 @@ export function EstimateEditor({ requirement, list, onBack, selectedEstimate }: 
     return { band: 'High', color: 'text-red-700 dark:text-red-400', bgColor: 'bg-red-50 dark:bg-red-900/30' };
   };
 
-  // Group risks by category
   const risksByCategory = useMemo(() => {
     const categories = ['Technical', 'Business', 'Governance', 'Integration'] as const;
     return categories.map(cat => ({
@@ -350,7 +433,7 @@ export function EstimateEditor({ requirement, list, onBack, selectedEstimate }: 
   return (
     <div className="h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-black dark:to-gray-950 overflow-hidden flex flex-col p-3">
       <div className="max-w-7xl mx-auto w-full h-full flex flex-col gap-2">
-        {/* Header Ultra-Compatto - singola riga */}
+        {/* Header */}
         <div className="flex items-center justify-between gap-3 bg-white dark:bg-gray-900 px-3 py-2 rounded-lg border shadow-sm shrink-0">
           <div className="flex items-center gap-2 flex-1 min-w-0">
             <Button variant="ghost" size="sm" onClick={onBack} className="h-7 w-7 p-0 shrink-0">
@@ -360,6 +443,7 @@ export function EstimateEditor({ requirement, list, onBack, selectedEstimate }: 
             <h1 className="text-sm font-bold text-gray-900 dark:text-gray-50 truncate flex-1">{requirement.title}</h1>
           </div>
           <div className="flex items-center gap-1.5 shrink-0">
+            <ThemeToggle />
             <Badge className={`${getPriorityColor(requirement.priority)} text-xs px-2 py-0`}>
               {requirement.priority}
             </Badge>
@@ -387,19 +471,17 @@ export function EstimateEditor({ requirement, list, onBack, selectedEstimate }: 
           </div>
         </div>
 
-        {/* Errors - Ultra Compatto */}
+        {/* Errors */}
         {errors.length > 0 && (
           <Alert variant="destructive" className="py-1.5 px-3 shrink-0">
             <AlertCircle className="h-3.5 w-3.5" />
             <AlertDescription className="text-[10px]">
-              {errors.map((error, index) => (
-                <div key={index}>• {error}</div>
-              ))}
+              {errors.map((error, index) => (<div key={index}>• {error}</div>))}
             </AlertDescription>
           </Alert>
         )}
 
-        {/* Previous Estimates - Compatto inline */}
+        {/* Previous Estimates */}
         {previousEstimates.length > 0 && (
           <div className="flex items-center gap-1.5 px-2 py-1.5 bg-muted/50 rounded-lg shrink-0">
             <span className="text-[10px] font-medium text-muted-foreground">Stime precedenti:</span>
@@ -418,9 +500,9 @@ export function EstimateEditor({ requirement, list, onBack, selectedEstimate }: 
           </div>
         )}
 
-        {/* Layout a 3 colonne - 100% altezza disponibile */}
+        {/* 3 columns */}
         <div className="grid grid-cols-3 gap-2 flex-1 min-h-0">
-          {/* Colonna 1: Scenario & Drivers - Compatto */}
+          {/* Col 1 */}
           <Card className="flex flex-col overflow-hidden">
             <CardHeader className="pb-1.5 pt-2 px-3 shrink-0">
               <CardTitle className="text-xs font-semibold">Scenario & Driver</CardTitle>
@@ -443,7 +525,7 @@ export function EstimateEditor({ requirement, list, onBack, selectedEstimate }: 
                 value={complexity}
                 onChange={setComplexity}
                 defaultSource={getDefaultSource('complexity')?.source}
-                isOverridden={overriddenFields.complexity}
+                isOverridden={!!overriddenFields.complexity}
                 onToggleOverride={() => handleToggleOverride('complexity')}
               />
 
@@ -453,7 +535,7 @@ export function EstimateEditor({ requirement, list, onBack, selectedEstimate }: 
                 value={environments}
                 onChange={setEnvironments}
                 defaultSource={getDefaultSource('environments')?.source}
-                isOverridden={overriddenFields.environments}
+                isOverridden={!!overriddenFields.environments}
                 onToggleOverride={() => handleToggleOverride('environments')}
               />
 
@@ -463,7 +545,7 @@ export function EstimateEditor({ requirement, list, onBack, selectedEstimate }: 
                 value={reuse}
                 onChange={setReuse}
                 defaultSource={getDefaultSource('reuse')?.source}
-                isOverridden={overriddenFields.reuse}
+                isOverridden={!!overriddenFields.reuse}
                 onToggleOverride={() => handleToggleOverride('reuse')}
               />
 
@@ -473,11 +555,13 @@ export function EstimateEditor({ requirement, list, onBack, selectedEstimate }: 
                 value={stakeholders}
                 onChange={setStakeholders}
                 defaultSource={getDefaultSource('stakeholders')?.source}
-                isOverridden={overriddenFields.stakeholders}
+                isOverridden={!!overriddenFields.stakeholders}
                 onToggleOverride={() => handleToggleOverride('stakeholders')}
               />
             </CardContent>
-          </Card>            {/* Colonna 2: Activity Selection - Compatto */}
+          </Card>
+
+          {/* Col 2 */}
           <Card className="flex flex-col overflow-hidden">
             <CardHeader className="pb-1.5 pt-2 px-3 shrink-0">
               <div className="flex items-center justify-between">
@@ -485,14 +569,18 @@ export function EstimateEditor({ requirement, list, onBack, selectedEstimate }: 
                 {getDefaultSource('activities') && (
                   <DefaultPill
                     source={getDefaultSource('activities')!.source}
-                    isOverridden={overriddenFields.activities || false}
+                    isOverridden={!!overriddenFields.activities}
                     onToggleOverride={() => handleToggleOverride('activities')}
                   />
                 )}
               </div>
             </CardHeader>
             <CardContent className="overflow-y-auto flex-1 px-2 pb-2">
-              <Accordion type="multiple" defaultValue={[Object.keys(groupedActivities)[Object.keys(groupedActivities).length - 1]]} className="w-full">
+              <Accordion
+                type="multiple"
+                defaultValue={lastGroupKey ? [lastGroupKey] : []}
+                className="w-full"
+              >
                 {Object.entries(groupedActivities).map(([group, groupActivities]) => {
                   const selectedCount = groupActivities.filter(a => selectedActivities.includes(a.activity_code)).length;
                   const totalCount = groupActivities.length;
@@ -514,11 +602,12 @@ export function EstimateEditor({ requirement, list, onBack, selectedEstimate }: 
                               id={activity.activity_code}
                               checked={selectedActivities.includes(activity.activity_code)}
                               onCheckedChange={(checked) => {
-                                if (checked) {
-                                  setSelectedActivities([...selectedActivities, activity.activity_code]);
-                                } else {
-                                  setSelectedActivities(selectedActivities.filter(id => id !== activity.activity_code));
-                                }
+                                const isChecked = checked === true; // Radix: boolean | 'indeterminate'
+                                setSelectedActivities(prev =>
+                                  isChecked
+                                    ? (prev.includes(activity.activity_code) ? prev : [...prev, activity.activity_code])
+                                    : prev.filter(id => id !== activity.activity_code)
+                                );
                               }}
                               className="mt-0.5 h-3.5 w-3.5"
                             />
@@ -532,7 +621,7 @@ export function EstimateEditor({ requirement, list, onBack, selectedEstimate }: 
                               </label>
                               <Dialog>
                                 <DialogTrigger asChild>
-                                  <Button variant="ghost" size="sm" className="h-4 w-4 p-0 flex-shrink-0">
+                                  <Button variant="ghost" size="sm" className="h-4 w-4 p-0 flex-shrink-0" aria-label={`Info ${activity.display_name}`}>
                                     <Info className="h-3 w-3" />
                                   </Button>
                                 </DialogTrigger>
@@ -567,9 +656,9 @@ export function EstimateEditor({ requirement, list, onBack, selectedEstimate }: 
             </CardContent>
           </Card>
 
-          {/* Colonna 3: Rischi & Summary - Layout Ottimizzato */}
+          {/* Col 3 */}
           <div className="flex flex-col gap-2 h-full min-h-0">
-            {/* Rischi - Compatto con scroll */}
+            {/* Rischi */}
             <Card className="border-2 border-orange-200 dark:border-orange-800 bg-orange-50/30 dark:bg-orange-950/30 flex flex-col overflow-hidden flex-1 min-h-0">
               <CardHeader className="pb-1.5 pt-2 px-3 shrink-0">
                 <div className="flex items-center justify-between">
@@ -584,7 +673,7 @@ export function EstimateEditor({ requirement, list, onBack, selectedEstimate }: 
                   {getDefaultSource('risks') && (
                     <DefaultPill
                       source={getDefaultSource('risks')!.source}
-                      isOverridden={overriddenFields.risks || false}
+                      isOverridden={!!overriddenFields.risks}
                       onToggleOverride={() => handleToggleOverride('risks')}
                     />
                   )}
@@ -597,11 +686,11 @@ export function EstimateEditor({ requirement, list, onBack, selectedEstimate }: 
                         {getRiskBand(getTotalRiskWeight()).band}
                       </span>
                     </div>
-                    {/* Mini Progress bar */}
                     <div className="w-full bg-orange-200 dark:bg-orange-900 rounded-full h-1.5">
                       <div
-                        className={`h-1.5 rounded-full transition-all ${getTotalRiskWeight() <= 10 ? 'bg-green-500' :
-                          getTotalRiskWeight() <= 20 ? 'bg-yellow-500' : 'bg-red-500'
+                        className={`h-1.5 rounded-full transition-all ${getTotalRiskWeight() <= 10 ? 'bg-green-500'
+                          : getTotalRiskWeight() <= 20 ? 'bg-yellow-500'
+                            : 'bg-red-500'
                           }`}
                         style={{ width: `${Math.min((getTotalRiskWeight() / 30) * 100, 100)}%` }}
                       />
@@ -618,12 +707,7 @@ export function EstimateEditor({ requirement, list, onBack, selectedEstimate }: 
                 <Accordion type="multiple" defaultValue={['Technical', 'Business']} className="space-y-1">
                   {risksByCategory.map(({ category, risks: catRisks }) => {
                     const selectedCount = catRisks.filter(r => selectedRisks.includes(r.risk_id)).length;
-                    const categoryIcons = {
-                      Technical: '⚙️',
-                      Business: '💼',
-                      Governance: '🛡️',
-                      Integration: '🔗'
-                    };
+                    const categoryIcons = { Technical: '⚙️', Business: '💼', Governance: '🛡️', Integration: '🔗' } as const;
 
                     return (
                       <AccordionItem key={category} value={category} className="border rounded px-1.5">
@@ -645,11 +729,12 @@ export function EstimateEditor({ requirement, list, onBack, selectedEstimate }: 
                                 id={risk.risk_id}
                                 checked={selectedRisks.includes(risk.risk_id)}
                                 onCheckedChange={(checked) => {
-                                  if (checked) {
-                                    setSelectedRisks([...selectedRisks, risk.risk_id]);
-                                  } else {
-                                    setSelectedRisks(selectedRisks.filter(id => id !== risk.risk_id));
-                                  }
+                                  const isChecked = checked === true;
+                                  setSelectedRisks(prev =>
+                                    isChecked
+                                      ? (prev.includes(risk.risk_id) ? prev : [...prev, risk.risk_id])
+                                      : prev.filter(id => id !== risk.risk_id)
+                                  );
                                 }}
                                 className="mt-0.5 h-3.5 w-3.5"
                               />
@@ -679,9 +764,7 @@ export function EstimateEditor({ requirement, list, onBack, selectedEstimate }: 
                                         <p className="text-sm text-muted-foreground">{risk.guidance}</p>
                                       </div>
                                       <div className="bg-blue-50 dark:bg-blue-950/30 p-3 rounded-lg border border-blue-200 dark:border-blue-800">
-                                        <h4 className="text-sm font-semibold mb-1 text-blue-900 dark:text-blue-100">
-                                          💡 Come mitigare
-                                        </h4>
+                                        <h4 className="text-sm font-semibold mb-1 text-blue-900 dark:text-blue-100">💡 Come mitigare</h4>
                                         <p className="text-sm text-blue-800 dark:text-blue-200">{risk.mitigation}</p>
                                       </div>
                                       <div className="flex items-center justify-between text-xs text-muted-foreground">
@@ -701,13 +784,47 @@ export function EstimateEditor({ requirement, list, onBack, selectedEstimate }: 
                   })}
                 </Accordion>
               </CardContent>
-            </Card>            {/* Summary - Compatto, NO SCROLL, sempre visibile */}
+            </Card>
+
+            {/* Opzionali */}
+            {optionalActivityObjects.length > 0 && (
+              <Card className="border border-dashed border-yellow-200 bg-yellow-50/40 dark:border-yellow-800/40 dark:bg-yellow-900/20">
+                <CardHeader className="pb-1 pt-2 px-3 shrink-0">
+                  <CardTitle className="text-xs font-semibold text-yellow-900 dark:text-yellow-100">Attività opzionali</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2 px-3 pb-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-[10px] font-medium text-muted-foreground">Attività consigliate per stati/transizioni</p>
+                      <p className="text-[9px] text-muted-foreground">
+                        {optionalActivityObjects.map((a) => `${a.display_name} (${a.base_days}gg)`).join(' · ')}
+                      </p>
+                    </div>
+                    <label htmlFor="include-optional-activities" className="flex items-center gap-2 cursor-pointer select-none">
+                      <span className="text-[10px] font-semibold text-muted-foreground">{includeOptional ? 'Inclusa' : 'Esclusa'}</span>
+                      <Checkbox
+                        id="include-optional-activities"
+                        checked={includeOptional}
+                        onCheckedChange={(checked) => setIncludeOptional(checked === true)}
+                        className="h-4 w-4"
+                      />
+                    </label>
+                  </div>
+                  {includeOptional && optionalActivitiesTotalDays > 0 && (
+                    <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+                      <span>Impatto stimato</span>
+                      <Badge className="text-[9px] px-2 py-0.5">+{optionalActivitiesTotalDays} gg</Badge>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Summary */}
             <Card className="border-2 border-primary bg-gradient-to-br from-primary/10 to-primary/5 flex flex-col shrink-0">
               <CardHeader className="pb-1.5 pt-2 px-3 shrink-0 flex flex-row items-center justify-between">
                 <CardTitle className="text-xs font-semibold text-primary">Riepilogo</CardTitle>
-                <Badge variant="outline" className="text-[9px] px-1.5 py-0 h-4 text-primary border-primary/40">
-                  Auto
-                </Badge>
+                <Badge variant="outline" className="text-[9px] px-1.5 py-0 h-4 text-primary border-primary/40">Auto</Badge>
               </CardHeader>
               <CardContent className="space-y-1.5 px-3 pb-3 shrink-0">
                 {calculatedEstimate ? (

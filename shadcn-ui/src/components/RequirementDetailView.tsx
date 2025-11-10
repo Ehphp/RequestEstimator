@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { ArrowLeft, Calendar, User, Tag, Edit, Clock, TrendingUp, ChevronRight } from 'lucide-react';
 import ReactApexChart from 'react-apexcharts';
 import { ApexOptions } from 'apexcharts';
@@ -10,6 +10,7 @@ import { getEstimatesByReqId } from '../lib/storage';
 import { getPriorityColor, getStateColor, parseLabels } from '@/lib/utils';
 import { logger } from '@/lib/logger';
 import { EstimateEditor } from './EstimateEditor';
+import { ThemeToggle } from './ThemeToggle';
 
 interface RequirementDetailViewProps {
     requirement: Requirement;
@@ -22,6 +23,22 @@ export function RequirementDetailView({ requirement, list, onBack }: Requirement
     const [loading, setLoading] = useState(true);
     const [editMode, setEditMode] = useState(false);
     const [selectedEstimate, setSelectedEstimate] = useState<Estimate | null>(null);
+    const [viewingEstimate, setViewingEstimate] = useState<Estimate | null>(null);
+
+    const openEstimateEditor = useCallback(
+        (estimate: Estimate | null) => {
+            logger.info('Opening estimate editor:', {
+                hasEstimate: !!estimate,
+                estimateId: estimate?.estimate_id,
+                scenario: estimate?.scenario,
+                complexity: estimate?.complexity,
+                activitiesCount: estimate?.included_activities.length
+            });
+            setSelectedEstimate(estimate);
+            setEditMode(true);
+        },
+        []
+    );
 
     useEffect(() => {
         loadEstimates();
@@ -32,6 +49,12 @@ export function RequirementDetailView({ requirement, list, onBack }: Requirement
         try {
             const data = await getEstimatesByReqId(requirement.req_id);
             setEstimates(data);
+            setViewingEstimate((prev) => {
+                if (prev && data.some((entry) => entry.estimate_id === prev.estimate_id)) {
+                    return prev;
+                }
+                return data[0] ?? null;
+            });
             logger.info('Loaded estimates for requirement:', { count: data.length });
         } catch (error) {
             logger.error('Failed to load estimates:', error);
@@ -59,6 +82,7 @@ export function RequirementDetailView({ requirement, list, onBack }: Requirement
     if (editMode) {
         return (
             <EstimateEditor
+                key={selectedEstimate?.estimate_id || 'new'}
                 requirement={requirement}
                 list={list}
                 selectedEstimate={selectedEstimate}
@@ -84,6 +108,7 @@ export function RequirementDetailView({ requirement, list, onBack }: Requirement
                         <h1 className="text-sm font-bold text-gray-900 dark:text-gray-50 truncate flex-1">{requirement.title}</h1>
                     </div>
                     <div className="flex items-center gap-1.5 shrink-0">
+                        <ThemeToggle />
                         <Badge className={`${getPriorityColor(requirement.priority)} text-xs px-2 py-0`}>
                             {priorityLabel}
                         </Badge>
@@ -111,7 +136,7 @@ export function RequirementDetailView({ requirement, list, onBack }: Requirement
                                             <TrendingUp className="h-3.5 w-3.5 text-primary" />
                                             Stima Corrente
                                         </CardTitle>
-                                        <Button size="sm" onClick={() => setEditMode(true)} className="h-6 text-xs px-2">
+                                        <Button size="sm" onClick={() => openEstimateEditor(latestEstimate)} className="h-6 text-xs px-2">
                                             <Edit className="h-3 w-3 mr-1" />
                                             Modifica
                                         </Button>
@@ -250,7 +275,7 @@ export function RequirementDetailView({ requirement, list, onBack }: Requirement
                             <Card className="border-2 border-dashed border-muted-foreground/30 flex flex-col items-center justify-center h-full">
                                 <CardContent className="text-center py-6">
                                     <p className="text-xs text-muted-foreground mb-3">Nessuna stima creata</p>
-                                    <Button onClick={() => setEditMode(true)} size="sm">
+                                    <Button onClick={() => openEstimateEditor(null)} size="sm">
                                         <Edit className="h-3 w-3 mr-1.5" />
                                         Crea Stima
                                     </Button>
@@ -515,52 +540,135 @@ export function RequirementDetailView({ requirement, list, onBack }: Requirement
 
                                         {/* Lista Scenari Compatta - SCROLLABILE */}
                                         <div className="space-y-1.5">
-                                            {estimates.map((estimate, index) => (
-                                                <div
-                                                    key={estimate.estimate_id}
-                                                    className={`p-2 rounded-lg border text-xs ${index === 0 ? 'border-primary/40 bg-gradient-to-r from-primary/10 to-primary/5' : 'border-border hover:bg-accent/50'} cursor-pointer transition-all hover:shadow-sm`}
-                                                    onClick={() => {
-                                                        setSelectedEstimate(estimate);
-                                                        setEditMode(true);
-                                                    }}
-                                                >
-                                                    <div className="flex items-center justify-between mb-1">
-                                                        <div className="flex items-center gap-1.5">
-                                                            <span className="font-semibold text-xs">S{estimate.scenario}</span>
-                                                            {index === 0 && (
-                                                                <Badge variant="default" className="text-[9px] px-1 py-0 h-4">Attuale</Badge>
-                                                            )}
-                                                        </div>
-                                                        <span className="font-bold text-primary text-sm">{estimate.total_days}gg</span>
-                                                    </div>
+                                            {estimates.map((estimate, index) => {
+                                                const isViewing = viewingEstimate?.estimate_id === estimate.estimate_id;
+                                                const baseClasses = index === 0
+                                                    ? 'border-primary/40 bg-gradient-to-r from-primary/10 to-primary/5'
+                                                    : 'border-border hover:bg-accent/50';
 
-                                                    <div className="flex items-center justify-between text-[10px] text-muted-foreground">
-                                                        <span>{new Date(estimate.created_on).toLocaleDateString('it-IT', { month: 'short', day: 'numeric' })}</span>
-                                                        <div className="flex items-center gap-1.5">
-                                                            <span className="bg-accent px-1.5 py-0.5 rounded">{estimate.complexity}</span>
-                                                            <ChevronRight className="h-3 w-3" />
+                                                return (
+                                                    <div
+                                                        key={estimate.estimate_id}
+                                                        role="button"
+                                                        tabIndex={0}
+                                                        className={`p-2 rounded-lg border text-xs ${baseClasses} ${isViewing ? 'ring-2 ring-primary/50 border-primary/60 shadow-sm' : ''} cursor-pointer transition-all`}
+                                                        onClick={() => setViewingEstimate(estimate)}
+                                                        onKeyDown={(event) => {
+                                                            if (event.key === 'Enter' || event.key === ' ') {
+                                                                event.preventDefault();
+                                                                setViewingEstimate(estimate);
+                                                            }
+                                                        }}
+                                                    >
+                                                        <div className="flex items-center justify-between mb-1">
+                                                            <div className="flex items-center gap-1.5">
+                                                                <span className="font-semibold text-xs">S{estimate.scenario}</span>
+                                                                {index === 0 && (
+                                                                    <Badge variant="default" className="text-[9px] px-1 py-0 h-4">Attuale</Badge>
+                                                                )}
+                                                            </div>
+                                                            <span className="font-bold text-primary text-sm">{estimate.total_days}gg</span>
+                                                        </div>
+
+                                                        <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+                                                            <span>{new Date(estimate.created_on).toLocaleDateString('it-IT', { month: 'short', day: 'numeric' })}</span>
+                                                            <div className="flex items-center gap-1.5">
+                                                                <span className="bg-accent px-1.5 py-0.5 rounded">{estimate.complexity}</span>
+                                                                <ChevronRight className="h-3 w-3" />
+                                                            </div>
+                                                        </div>
+
+                                                        {/* Mini progress bar */}
+                                                        <div className="mt-1.5 h-1 bg-accent rounded-full overflow-hidden">
+                                                            <div
+                                                                className="h-full bg-gradient-to-r from-blue-500 to-orange-500"
+                                                                style={{ width: `${(estimate.subtotal_days / estimate.total_days) * 100}%` }}
+                                                            ></div>
                                                         </div>
                                                     </div>
-
-                                                    {/* Mini progress bar */}
-                                                    <div className="mt-1.5 h-1 bg-accent rounded-full overflow-hidden">
-                                                        <div
-                                                            className="h-full bg-gradient-to-r from-blue-500 to-orange-500"
-                                                            style={{ width: `${(estimate.subtotal_days / estimate.total_days) * 100}%` }}
-                                                        ></div>
-                                                    </div>
-                                                </div>
-                                            ))}
+                                                );
+                                            })}
                                         </div>
                                     </div>
                                 )}
                             </CardContent>
                         </Card>
 
+                        {/* Dettaglio stima selezionata */}
+                        {viewingEstimate && (
+                            <Card className="border rounded-lg bg-white dark:bg-gray-900">
+                                <CardHeader className="pb-0 pt-3 px-3">
+                                    <div className="flex items-center justify-between gap-2">
+                                        <CardTitle className="text-xs font-semibold flex items-center gap-1.5">
+                                            <Clock className="h-3.5 w-3.5 text-muted-foreground" />
+                                            Dettaglio stima
+                                        </CardTitle>
+                                        <Button
+                                            size="sm"
+                                            className="h-7 px-2 text-[10px]"
+                                            onClick={(event) => {
+                                                event.stopPropagation();
+                                                if (viewingEstimate) {
+                                                    openEstimateEditor(viewingEstimate);
+                                                }
+                                            }}
+                                        >
+                                            <Edit className="h-3 w-3 mr-1" />
+                                            Modifica
+                                        </Button>
+                                    </div>
+                                </CardHeader>
+                                <CardContent className="space-y-3 px-3 pb-3 pt-1">
+                                    <div className="flex items-center justify-between gap-3 text-[11px] text-muted-foreground">
+                                        <div>
+                                            <p className="uppercase text-[10px] font-medium">Scenario</p>
+                                            <p className="text-base font-semibold text-foreground">S{viewingEstimate.scenario}</p>
+                                        </div>
+                                        <div className="flex items-center gap-1 text-[10px]">
+                                            <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
+                                            <span>{new Date(viewingEstimate.created_on).toLocaleDateString('it-IT')}</span>
+                                        </div>
+                                    </div>
+                                    <div className="rounded-2xl border border-dashed border-muted/70 bg-muted/10 px-3 py-2 text-center">
+                                        <p className="text-[10px] text-muted-foreground uppercase tracking-[0.2em] mb-1">Totale giorni</p>
+                                        <p className="text-3xl font-bold text-foreground">{viewingEstimate.total_days} gg</p>
+                                        <p className="text-[10px] text-muted-foreground">Contingenza {viewingEstimate.contingency_pct}%</p>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-2 text-[11px]">
+                                        <div className="rounded-lg border px-2 py-1">
+                                            <p className="text-muted-foreground text-[10px]">Subtotal</p>
+                                            <p className="font-semibold text-foreground">{viewingEstimate.subtotal_days} gg</p>
+                                        </div>
+                                        <div className="rounded-lg border px-2 py-1">
+                                            <p className="text-muted-foreground text-[10px]">Contingenza</p>
+                                            <p className="font-semibold text-foreground">{viewingEstimate.contingency_days} gg</p>
+                                        </div>
+                                        <div className="rounded-lg border px-2 py-1">
+                                            <p className="text-muted-foreground text-[10px]">Attività selezionate</p>
+                                            <p className="font-semibold text-foreground">{viewingEstimate.included_activities.length}</p>
+                                        </div>
+                                        <div className="rounded-lg border px-2 py-1">
+                                            <p className="text-muted-foreground text-[10px]">Rischi scelti</p>
+                                            <p className="font-semibold text-foreground">{viewingEstimate.selected_risks.length}</p>
+                                        </div>
+                                    </div>
+                                    <div className="space-y-1 text-[11px] text-muted-foreground">
+                                        <p className="uppercase text-[10px] tracking-wide">Driver</p>
+                                        <p className="text-foreground">
+                                            {viewingEstimate.complexity} • {viewingEstimate.environments} • {viewingEstimate.reuse} • {viewingEstimate.stakeholders}
+                                        </p>
+                                        <p>
+                                            Opzionali: <span className="font-semibold text-foreground">{viewingEstimate.include_optional ? 'Sì' : 'No'}</span>
+                                        </p>
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        )}
+
                         {/* CTA Nuova Stima - Fisso in basso */}
                         <Card className="border-2 border-dashed border-primary/30 bg-gradient-to-br from-primary/5 to-transparent shrink-0">
                             <CardContent className="text-center py-3 px-3">
-                                <Button onClick={() => setEditMode(true)} className="w-full h-8 text-xs">
+                                <Button onClick={() => openEstimateEditor(null)} className="w-full h-8 text-xs">
                                     <Edit className="h-3.5 w-3.5 mr-1.5" />
                                     Nuova Stima
                                 </Button>

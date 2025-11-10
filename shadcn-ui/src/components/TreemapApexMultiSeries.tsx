@@ -130,7 +130,7 @@ type RequirementNode = {
 
   state: Requirement["state"];
 
-  businessOwnerx: string;
+  businessOwner?: string;
 };
 
 type MultiSeriesDataPoint = {
@@ -170,7 +170,7 @@ type SeriesMetadata = {
 
   status: List["status"];
 
-  businessOwnerx: string;
+  businessOwner: string;
 
   totalDays: number;
 
@@ -207,13 +207,13 @@ interface TreemapApexMultiSeriesProps {
 
   listRequirementStats: Record<string, RequirementNode[]>;
 
-  onSelectListx: (list: List) => void;
+  onSelectList: (list: List) => void;
 
-  onRequirementSelectx: (listId: string, requirementId: string) => void;
+  onRequirementSelect: (listId: string, requirementId: string) => void;
 
   containerHeight: number;
 
-  showLegendx: boolean;
+  showLegend: boolean;
 }
 
 function prepareMultiSeriesData(
@@ -232,7 +232,7 @@ function prepareMultiSeriesData(
 
   hasData: boolean;
 
-  emptyMessagex: string;
+  emptyMessage: string;
 } {
   // Filtra liste con contenuto
 
@@ -346,7 +346,7 @@ function prepareMultiSeriesData(
 
       status: list.status,
 
-      businessOwner: list.default_business_owner || list.owner,
+      businessOwner: list.default_business_owner || list.owner || '',
 
       totalDays: stats.totalDays,
 
@@ -362,10 +362,10 @@ function prepareMultiSeriesData(
     };
   });
 
-  return { series, metadata, hasData: true };
+  return { series, metadata, hasData: true, emptyMessage: '' };
 }
 
-function hideRotatedTreemapLabels(chartElx: Element | null): void {
+function hideRotatedTreemapLabels(chartEl: Element | null): void {
   if (!chartEl) {
     return;
   }
@@ -450,10 +450,10 @@ export function TreemapApexMultiSeries({
       colorMode === "technology"
         ? metadata.map((meta) => meta.treemapFillColor)
         : [
-            getPrioritySolidColor("High"),
-            getPrioritySolidColor("Med"),
-            getPrioritySolidColor("Low"),
-          ];
+          getPrioritySolidColor("High"),
+          getPrioritySolidColor("Med"),
+          getPrioritySolidColor("Low"),
+        ];
 
     // Soglie per visibilità label
 
@@ -798,7 +798,7 @@ export function TreemapApexMultiSeries({
 
               
 
-              <!-- Priorit� + Stato -->
+              <!-- Priorita + Stato -->
 
               <div style="font-size: 11px; color: rgba(255,255,255,0.8); margin-bottom: 6px; display:flex; flex-wrap: wrap; align-items:center; gap:10px;">
 
@@ -911,7 +911,7 @@ export function TreemapApexMultiSeries({
     const priorityOrder: Requirement["priority"][] = ["High", "Med", "Low"];
 
     const priorityEntries = priorityOrder.map((priority) => ({
-      label: `Priorit� ${PRIORITY_LABELS[priority]}`,
+      label: `Priorita ${PRIORITY_LABELS[priority]}`,
 
       color: getPrioritySolidColor(priority),
 
@@ -1047,11 +1047,11 @@ export function TreemapApexMultiSeries({
 
             <div className="hidden sm:block h-8 w-px bg-border" />
 
-            {/* Priorit� (Requisiti) */}
+            {/* Priorita (Requisiti) */}
 
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-xs font-semibold text-foreground/90 mr-1">
-                Priorit� (Requisiti):
+                Priorita (Requisiti):
               </span>
 
               {legendEntries

@@ -270,8 +270,6 @@ export function TreemapApex({
     const series = [{ data }];
 
     const MIN_LABEL_PERCENTAGE = 2.5;
-    const SINGLE_LINE_PERCENTAGE = 5;
-    const FULL_DETAILS_PERCENTAGE = 12;
 
     const options: ApexOptions = {
       chart: {
@@ -318,18 +316,10 @@ export function TreemapApex({
             return '';
           }
 
-          const maxChars = dataPoint.percentage < FULL_DETAILS_PERCENTAGE ? 18 : 26;
+          const maxChars = 22;
           const shortTitle = text.length > maxChars ? `${text.slice(0, maxChars - 1)}...` : text;
 
-          if (dataPoint.percentage < SINGLE_LINE_PERCENTAGE) {
-            return shortTitle;
-          }
-
-          if (dataPoint.percentage < FULL_DETAILS_PERCENTAGE) {
-            return `${shortTitle}\n${dataPoint.days.toFixed(1)} gg`;
-          }
-
-          return `${shortTitle}\n${dataPoint.days.toFixed(1)} gg | ${dataPoint.requirements} req\n${dataPoint.percentage.toFixed(1)}% | ${dataPoint.avgDaysPerReq?.toFixed(1)} gg/req`;
+          return `${shortTitle}\n${dataPoint.days.toFixed(1)} gg tot`;
         }
       },
       colors: data.map((d) => d.fillColor),
