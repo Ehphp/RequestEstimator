@@ -537,7 +537,7 @@ export function DashboardView({ requirements, onSelectRequirement }: DashboardVi
             {/* KPI Row compatta - 5 cards inline con hover expansion */}
             <div className="grid grid-cols-5 gap-1.5">
                 {/* Card 1: Metriche Base - Compatta con hover */}
-                <Card className="border-l-4 border-l-blue-500 group">
+                <Card className="border-l-4 border-l-[#2563EB] group">
                     <CardContent className="p-1.5">
                         <div className="flex items-baseline justify-between">
                             <div className="text-[10px] text-muted-foreground">Metriche</div>
@@ -595,7 +595,7 @@ export function DashboardView({ requirements, onSelectRequirement }: DashboardVi
                 </Card>
 
                 {/* Card 2: Priority Mix - Compatta */}
-                <Card className="border-l-4 border-l-red-500 group">
+                <Card className="border-l-4 border-l-[#F43F5E] group">
                     <CardContent className="p-1.5">
                         <div className="flex items-baseline justify-between mb-0.5">
                             <div className="text-[10px] text-muted-foreground">Priority</div>
@@ -685,7 +685,7 @@ export function DashboardView({ requirements, onSelectRequirement }: DashboardVi
                 </Card>
 
                 {/* Card 3: Mix Difficoltà - Compatta con cerchi */}
-                <Card className="border-l-4 border-l-green-500 group">
+                <Card className="border-l-4 border-l-[#10B981] group">
                     <CardContent className="p-1.5">
                         <div className="flex items-baseline justify-between mb-0.5">
                             <div className="text-[10px] text-muted-foreground">Difficoltà</div>

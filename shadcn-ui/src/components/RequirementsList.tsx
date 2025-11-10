@@ -806,6 +806,8 @@ export function RequirementsList({
       priority: (defaults.priority as Requirement['priority']) ?? 'Med',
       state: (defaults.state as Requirement['state']) ?? 'Proposed',
       estimator: defaults.estimator ?? '',
+      environments: defaults.environments ?? undefined,
+      stakeholders: defaults.stakeholders ?? undefined,
       parent_req_id: null
     });
     setIsFormDialogOpen(true);
@@ -1553,16 +1555,18 @@ export function RequirementsList({
                     }
                   >
                     {visibleRequirements.map(({ requirement, labels, depth, parentId }) => {
+
+                      // Nuova palette coerente con LIST_COLOR_PALETTE
                       const priorityAccentColor = {
-                        High: 'border-red-500',
-                        Med: 'border-yellow-500',
-                        Low: 'border-green-500'
+                        High: 'border-[#F43F5E]',
+                        Med: 'border-[#F59E0B]',
+                        Low: 'border-[#10B981]'
                       }[requirement.priority];
 
                       const prioritySolidBadge = {
-                        High: 'bg-red-500 hover:bg-red-600',
-                        Med: 'bg-yellow-500 hover:bg-yellow-600',
-                        Low: 'bg-green-500 hover:bg-green-600'
+                        High: 'bg-[#F43F5E] hover:bg-[#F43F5E]/90',
+                        Med: 'bg-[#F59E0B] hover:bg-[#F59E0B]/90',
+                        Low: 'bg-[#10B981] hover:bg-[#10B981]/90'
                       }[requirement.priority];
 
                       const stateSolidBadge = {

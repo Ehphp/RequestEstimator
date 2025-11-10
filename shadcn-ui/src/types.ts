@@ -43,6 +43,12 @@ export interface Requirement {
   labels_is_overridden?: boolean;
   description_default_source?: string;
   description_is_overridden?: boolean;
+  environments?: string;
+  stakeholders?: string;
+  environments_default_source?: string;
+  environments_is_overridden?: boolean;
+  stakeholders_default_source?: string;
+  stakeholders_is_overridden?: boolean;
 }
 
 export interface Estimate {

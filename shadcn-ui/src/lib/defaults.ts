@@ -1,8 +1,8 @@
 import { List, Requirement, Estimate, StickyDefaults, DefaultSource } from '../types';
-import { presets, getCurrentQuarter, inferPriorityFromTitle, inferLabelsFromTitle, inferStakeholdersFromLabels, shouldIncludeOptionalActivities, inferRisksFromTitle } from '../data/presets';
+import { presets, getCurrentQuarter, inferPriorityFromTitle, inferLabelsFromTitle, shouldIncludeOptionalActivities, inferRisksFromTitle } from '../data/presets';
 import { getStickyDefaults as getSupabaseStickyDefaults, saveStickyDefaults as saveSupabaseStickyDefaults } from './storage';
 import { logger } from './logger';
-import { parseLabels } from './utils';
+// ...existing code...
 
 /**
  * DEFAULTS SYSTEM ARCHITECTURE
@@ -154,6 +154,33 @@ export function getRequirementDefaults(
   // BUSINESS_OWNER: List.default_business_owner → List.owner → Empty
   const businessOwner = list.default_business_owner || list.owner || '';
 
+  // Includi environments e stakeholders se presenti nella lista
+  let environments: Requirement['environments'] | undefined = undefined;
+  let environmentsSource: string | undefined = undefined;
+  if (list.default_environments) {
+    environments = list.default_environments;
+    environmentsSource = 'List Default';
+    sources.push({
+      field: 'environments',
+      value: environments,
+      source: environmentsSource,
+      is_overridden: false
+    });
+  }
+
+  let stakeholders: Requirement['stakeholders'] | undefined = undefined;
+  let stakeholdersSource: string | undefined = undefined;
+  if (list.default_stakeholders) {
+    stakeholders = list.default_stakeholders;
+    stakeholdersSource = 'List Default';
+    sources.push({
+      field: 'stakeholders',
+      value: stakeholders,
+      source: stakeholdersSource,
+      is_overridden: false
+    });
+  }
+
   const defaults: Partial<Requirement> = {
     priority,
     business_owner: businessOwner,
@@ -161,13 +188,19 @@ export function getRequirementDefaults(
     state: 'Proposed',
     estimator: currentUser,
     description,
+    environments,
+    stakeholders,
     // Default source tracking
     priority_default_source: prioritySource,
     priority_is_overridden: false,
     labels_default_source: labelsSource,
     labels_is_overridden: false,
     description_default_source: descriptionSource,
-    description_is_overridden: false
+    description_is_overridden: false,
+    environments_default_source: environmentsSource,
+    environments_is_overridden: false,
+    stakeholders_default_source: stakeholdersSource,
+    stakeholders_is_overridden: false
   };
 
   return { defaults, sources };
@@ -198,7 +231,7 @@ export async function getEstimateDefaults(
     complexitySource = `Preset: ${preset.name}`;
   }
 
-  // Environments - list default, then preset, then default
+  // Environments - usa sempre il default della lista se presente, poi preset, poi default
   let environments = '2 env';
   let environmentsSource = 'Default';
   if (list.default_environments) {
@@ -217,16 +250,15 @@ export async function getEstimateDefaults(
     reuseSource = `Preset: ${preset.name}`;
   }
 
-  // Stakeholders - list default, then inferred from labels
+  // Stakeholders - usa sempre il default della lista se presente, poi preset, poi default
   let stakeholders = '1 team';
   let stakeholdersSource = 'Default';
   if (list.default_stakeholders) {
     stakeholders = list.default_stakeholders;
     stakeholdersSource = 'List Default';
-  } else {
-    const labels = parseLabels(requirement.labels);
-    stakeholders = inferStakeholdersFromLabels(labels);
-    stakeholdersSource = labels.length > 0 ? 'Labels Analysis' : (preset ? `Preset: ${preset.name}` : 'Default');
+  } else if (preset) {
+    stakeholders = preset.stakeholders;
+    stakeholdersSource = `Preset: ${preset.name}`;
   }
 
   // Activities - preset or sticky

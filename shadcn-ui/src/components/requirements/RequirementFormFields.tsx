@@ -22,6 +22,8 @@ export type RequirementFormStateBase = {
   state: Requirement['state'];
   estimator?: string;
   parent_req_id?: string | null;
+  environments?: string;
+  stakeholders?: string;
 };
 
 interface RequirementFormFieldsProps {
