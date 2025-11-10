@@ -17,6 +17,9 @@ export interface List {
   default_business_owner?: string;
   default_labels?: string;
   default_description?: string;
+  // Default fields for estimates (cascade defaults)
+  default_environments?: '1 env' | '2 env' | '3 env';
+  default_stakeholders?: '1 team' | '2-3 team' | '4+ team';
 }
 
 export interface Requirement {

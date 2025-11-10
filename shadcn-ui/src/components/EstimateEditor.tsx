@@ -2,8 +2,6 @@ import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { ArrowLeft, Save, Info, AlertCircle, Copy, Sparkles, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -14,7 +12,7 @@ import { useDefaultTracking } from '@/hooks/useDefaultTracking';
 import { Requirement, Estimate, Activity, List } from '../types';
 import { activities, risks } from '../data/catalog';
 import { calculateEstimate } from '../lib/calculations';
-import { saveEstimate, getEstimatesByReqId } from '../lib/storage';
+import { saveEstimate, getEstimatesByReqId, getRequirementsByListId } from '../lib/storage';
 import { getEstimateDefaults, updateStickyDefaults, resetToDefaults } from '../lib/defaults';
 import { validateEstimate } from '../lib/validation';
 import { getPriorityColor, getStateColor } from '@/lib/utils';
@@ -23,6 +21,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { DefaultPill } from './DefaultPill';
 import { DriverSelect } from './DriverSelect';
 import { ThemeToggle } from './ThemeToggle';
+import { RequirementRelations } from './RequirementRelations';
 
 interface EstimateEditorProps {
   requirement: Requirement;
@@ -36,7 +35,15 @@ export function EstimateEditor({ requirement, list, onBack, selectedEstimate }: 
   const { toast } = useToast();
   const { defaultSources, setDefaultSources, overriddenFields, setOverriddenFields } = useDefaultTracking();
 
-  const [scenario, setScenario] = useState('A');
+  // Generate automatic scenario name based on timestamp
+  const generateScenarioName = () => {
+    const now = new Date();
+    const date = now.toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit' });
+    const time = now.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit', hour12: false });
+    return `Scenario ${date} ${time}`;
+  };
+
+  const [scenario, setScenario] = useState(generateScenarioName());
   const [complexity, setComplexity] = useState('');
   const [environments, setEnvironments] = useState('');
   const [reuse, setReuse] = useState('');
@@ -49,6 +56,7 @@ export function EstimateEditor({ requirement, list, onBack, selectedEstimate }: 
   const [calculatedEstimate, setCalculatedEstimate] = useState<Partial<Estimate> | null>(null);
   const [previousEstimates, setPreviousEstimates] = useState<Estimate[]>([]);
   const [autoCalcReady, setAutoCalcReady] = useState(false);
+  const [allRequirements, setAllRequirements] = useState<Requirement[]>([]);
 
   // safer unmount flag for async
   const aliveRef = useRef(true);
@@ -78,7 +86,28 @@ export function EstimateEditor({ requirement, list, onBack, selectedEstimate }: 
     })();
   }, [requirement.req_id]);
 
+  // Load all requirements for relations display
+  useEffect(() => {
+    (async () => {
+      try {
+        const reqs = await getRequirementsByListId(list.list_id);
+        if (aliveRef.current) setAllRequirements(reqs);
+      } catch (e) {
+        logger.error('Failed to load requirements for relations', e);
+      }
+    })();
+  }, [list.list_id]);
+
   // Initialize form data
+  const notifyStickyDefaultsError = useCallback((error: unknown) => {
+    logger.error('Sticky defaults read failed', error);
+    toast({
+      variant: 'destructive',
+      title: 'Defaults non disponibili',
+      description: 'Impossibile recuperare i default sticky. I valori verranno ricalcolati.'
+    });
+  }, [toast]);
+
   useEffect(() => {
     setAutoCalcReady(false);
 
@@ -115,7 +144,7 @@ export function EstimateEditor({ requirement, list, onBack, selectedEstimate }: 
 
       if (!currentUser) {
         // Reset to empty state if no user
-        setScenario('A');
+        setScenario(generateScenarioName());
         setComplexity('');
         setEnvironments('');
         setReuse('');
@@ -132,10 +161,12 @@ export function EstimateEditor({ requirement, list, onBack, selectedEstimate }: 
       }
 
       try {
-        const { defaults, sources } = await getEstimateDefaults(requirement, list, currentUser);
+        const { defaults, sources } = await getEstimateDefaults(requirement, list, currentUser, {
+          onStickyDefaultsError: notifyStickyDefaultsError
+        });
         if (!aliveRef.current) return;
 
-        setScenario(defaults.scenario || 'A');
+        setScenario(generateScenarioName());
         setComplexity(defaults.complexity || '');
         setEnvironments(defaults.environments || '');
         setReuse(defaults.reuse || '');
@@ -156,6 +187,7 @@ export function EstimateEditor({ requirement, list, onBack, selectedEstimate }: 
     requirement.req_id,
     list.list_id,
     currentUser,
+    notifyStickyDefaultsError,
     setOverriddenFields,
     setDefaultSources
   ]);
@@ -329,13 +361,17 @@ export function EstimateEditor({ requirement, list, onBack, selectedEstimate }: 
       await saveEstimate(estimate);
 
       if (currentUser) {
-        await updateStickyDefaults(currentUser, list.list_id, {
-          complexity: complexity as Estimate['complexity'],
-          environments: environments as Estimate['environments'],
-          reuse: reuse as Estimate['reuse'],
-          stakeholders: stakeholders as Estimate['stakeholders'],
-          included_activities: selectedActivities
-        });
+        try {
+          await updateStickyDefaults(currentUser, list.list_id, {
+            complexity: complexity as Estimate['complexity'],
+            environments: environments as Estimate['environments'],
+            reuse: reuse as Estimate['reuse'],
+            stakeholders: stakeholders as Estimate['stakeholders'],
+            included_activities: includedActivitiesForSave
+          });
+        } catch (stickyError) {
+          logger.warn('Sticky defaults update skipped (non bloccante)', stickyError);
+        }
       }
 
       toast({
@@ -392,8 +428,11 @@ export function EstimateEditor({ requirement, list, onBack, selectedEstimate }: 
 
   const handleResetAllDefaults = async () => {
     if (!currentUser) return;
-    const { defaults, sources } = await resetToDefaults(requirement, list, currentUser);
+    const { defaults, sources } = await resetToDefaults(requirement, list, currentUser, {
+      onStickyDefaultsError: notifyStickyDefaultsError
+    });
 
+    setScenario(generateScenarioName());
     setComplexity(defaults.complexity || '');
     setEnvironments(defaults.environments || '');
     setReuse(defaults.reuse || '');
@@ -471,6 +510,20 @@ export function EstimateEditor({ requirement, list, onBack, selectedEstimate }: 
           </div>
         </div>
 
+        {/* Relations Alert Badge */}
+        {(requirement.parent_req_id || allRequirements.some(r => r.parent_req_id === requirement.req_id)) && (
+          <Alert className="border-blue-200 bg-blue-50 dark:bg-blue-950/20 dark:border-blue-800 py-2">
+            <AlertDescription className="flex items-center gap-2">
+              <RequirementRelations
+                currentRequirement={requirement}
+                allRequirements={allRequirements}
+                onNavigate={() => { }}
+                compact={true}
+              />
+            </AlertDescription>
+          </Alert>
+        )}
+
         {/* Errors */}
         {errors.length > 0 && (
           <Alert variant="destructive" className="py-1.5 px-3 shrink-0">
@@ -502,162 +555,41 @@ export function EstimateEditor({ requirement, list, onBack, selectedEstimate }: 
 
         {/* 3 columns */}
         <div className="grid grid-cols-3 gap-2 flex-1 min-h-0">
-          {/* Col 1 */}
-          <Card className="flex flex-col overflow-hidden">
-            <CardHeader className="pb-1.5 pt-2 px-3 shrink-0">
-              <CardTitle className="text-xs font-semibold">Scenario & Driver</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2 overflow-y-auto flex-1 px-3 pb-3">
-              <div>
-                <Label htmlFor="scenario" className="text-[10px]">Scenario</Label>
-                <Input
-                  id="scenario"
-                  value={scenario}
-                  onChange={(e) => setScenario(e.target.value)}
-                  placeholder="es. A, B, C"
-                  className="mt-1 h-7 text-xs"
-                />
-              </div>
-
-              <DriverSelect
-                label="Complessità"
-                driverType="complexity"
-                value={complexity}
-                onChange={setComplexity}
-                defaultSource={getDefaultSource('complexity')?.source}
-                isOverridden={!!overriddenFields.complexity}
-                onToggleOverride={() => handleToggleOverride('complexity')}
-              />
-
-              <DriverSelect
-                label="Ambienti"
-                driverType="environments"
-                value={environments}
-                onChange={setEnvironments}
-                defaultSource={getDefaultSource('environments')?.source}
-                isOverridden={!!overriddenFields.environments}
-                onToggleOverride={() => handleToggleOverride('environments')}
-              />
-
-              <DriverSelect
-                label="Riutilizzo"
-                driverType="reuse"
-                value={reuse}
-                onChange={setReuse}
-                defaultSource={getDefaultSource('reuse')?.source}
-                isOverridden={!!overriddenFields.reuse}
-                onToggleOverride={() => handleToggleOverride('reuse')}
-              />
-
-              <DriverSelect
-                label="Stakeholder"
-                driverType="stakeholders"
-                value={stakeholders}
-                onChange={setStakeholders}
-                defaultSource={getDefaultSource('stakeholders')?.source}
-                isOverridden={!!overriddenFields.stakeholders}
-                onToggleOverride={() => handleToggleOverride('stakeholders')}
-              />
-            </CardContent>
-          </Card>
-
-          {/* Col 2 */}
-          <Card className="flex flex-col overflow-hidden">
-            <CardHeader className="pb-1.5 pt-2 px-3 shrink-0">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-xs font-semibold">Attività</CardTitle>
-                {getDefaultSource('activities') && (
-                  <DefaultPill
-                    source={getDefaultSource('activities')!.source}
-                    isOverridden={!!overriddenFields.activities}
-                    onToggleOverride={() => handleToggleOverride('activities')}
-                  />
-                )}
-              </div>
-            </CardHeader>
-            <CardContent className="overflow-y-auto flex-1 px-2 pb-2">
-              <Accordion
-                type="multiple"
-                defaultValue={lastGroupKey ? [lastGroupKey] : []}
-                className="w-full"
-              >
-                {Object.entries(groupedActivities).map(([group, groupActivities]) => {
-                  const selectedCount = groupActivities.filter(a => selectedActivities.includes(a.activity_code)).length;
-                  const totalCount = groupActivities.length;
-
-                  return (
-                    <AccordionItem key={group} value={group}>
-                      <AccordionTrigger className="text-[10px] font-semibold text-primary hover:no-underline py-1.5">
-                        <div className="flex items-center justify-between w-full pr-2">
-                          <span>{group}</span>
-                          <Badge variant="secondary" className="text-[9px] px-1.5 py-0 h-4">
-                            {selectedCount}/{totalCount}
-                          </Badge>
-                        </div>
-                      </AccordionTrigger>
-                      <AccordionContent className="space-y-1 pt-1 pb-1.5">
-                        {groupActivities.map((activity) => (
-                          <div key={activity.activity_code} className="flex items-start space-x-1.5">
-                            <Checkbox
-                              id={activity.activity_code}
-                              checked={selectedActivities.includes(activity.activity_code)}
-                              onCheckedChange={(checked) => {
-                                const isChecked = checked === true; // Radix: boolean | 'indeterminate'
-                                setSelectedActivities(prev =>
-                                  isChecked
-                                    ? (prev.includes(activity.activity_code) ? prev : [...prev, activity.activity_code])
-                                    : prev.filter(id => id !== activity.activity_code)
-                                );
-                              }}
-                              className="mt-0.5 h-3.5 w-3.5"
-                            />
-                            <div className="flex-1 flex items-center gap-1 min-w-0">
-                              <label
-                                htmlFor={activity.activity_code}
-                                className="text-[10px] font-medium cursor-pointer flex-1 truncate leading-tight"
-                                title={activity.display_name}
-                              >
-                                {activity.display_name} ({activity.base_days}gg)
-                              </label>
-                              <Dialog>
-                                <DialogTrigger asChild>
-                                  <Button variant="ghost" size="sm" className="h-4 w-4 p-0 flex-shrink-0" aria-label={`Info ${activity.display_name}`}>
-                                    <Info className="h-3 w-3" />
-                                  </Button>
-                                </DialogTrigger>
-                                <DialogContent className="max-w-2xl">
-                                  <DialogHeader>
-                                    <DialogTitle>{activity.display_name}</DialogTitle>
-                                  </DialogHeader>
-                                  <div className="space-y-3">
-                                    <div>
-                                      <p className="font-semibold">Giorni Base: {activity.base_days}</p>
-                                      <p className="text-sm text-muted-foreground">Gruppo: {activity.driver_group}</p>
-                                    </div>
-                                    <div>
-                                      <h4 className="font-semibold mb-2">Descrizione Breve</h4>
-                                      <p className="text-sm">{activity.helper_short}</p>
-                                    </div>
-                                    <div>
-                                      <h4 className="font-semibold mb-2">Dettagli Completi</h4>
-                                      <div className="text-sm whitespace-pre-line">{activity.helper_long}</div>
-                                    </div>
-                                  </div>
-                                </DialogContent>
-                              </Dialog>
-                            </div>
-                          </div>
-                        ))}
-                      </AccordionContent>
-                    </AccordionItem>
-                  );
-                })}
-              </Accordion>
-            </CardContent>
-          </Card>
-
-          {/* Col 3 */}
+          {/* Col 1 - Driver & Rischi */}
           <div className="flex flex-col gap-2 h-full min-h-0">
+            {/* Driver */}
+            <Card className="flex flex-col overflow-hidden shrink-0">
+              <CardHeader className="pb-2 pt-2 px-3 shrink-0">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-xs font-semibold">Scenario & Driver</CardTitle>
+                  <div className="flex items-center gap-1">
+                    <span className="text-[10px] text-muted-foreground font-mono">{scenario}</span>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-3 px-3 pb-3">
+                <DriverSelect
+                  label="Complessità"
+                  driverType="complexity"
+                  value={complexity}
+                  onChange={setComplexity}
+                  defaultSource={getDefaultSource('complexity')?.source}
+                  isOverridden={!!overriddenFields.complexity}
+                  onToggleOverride={() => handleToggleOverride('complexity')}
+                />
+
+                <DriverSelect
+                  label="Riutilizzo"
+                  driverType="reuse"
+                  value={reuse}
+                  onChange={setReuse}
+                  defaultSource={getDefaultSource('reuse')?.source}
+                  isOverridden={!!overriddenFields.reuse}
+                  onToggleOverride={() => handleToggleOverride('reuse')}
+                />
+              </CardContent>
+            </Card>
+
             {/* Rischi */}
             <Card className="border-2 border-orange-200 dark:border-orange-800 bg-orange-50/30 dark:bg-orange-950/30 flex flex-col overflow-hidden flex-1 min-h-0">
               <CardHeader className="pb-1.5 pt-2 px-3 shrink-0">
@@ -785,10 +717,108 @@ export function EstimateEditor({ requirement, list, onBack, selectedEstimate }: 
                 </Accordion>
               </CardContent>
             </Card>
+          </div>
 
+          {/* Col 2 */}
+          <Card className="flex flex-col overflow-hidden">
+            <CardHeader className="pb-1.5 pt-2 px-3 shrink-0">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-xs font-semibold">Attività</CardTitle>
+                {getDefaultSource('activities') && (
+                  <DefaultPill
+                    source={getDefaultSource('activities')!.source}
+                    isOverridden={!!overriddenFields.activities}
+                    onToggleOverride={() => handleToggleOverride('activities')}
+                  />
+                )}
+              </div>
+            </CardHeader>
+            <CardContent className="overflow-y-auto flex-1 px-2 pb-2">
+              <Accordion
+                type="multiple"
+                defaultValue={lastGroupKey ? [lastGroupKey] : []}
+                className="w-full"
+              >
+                {Object.entries(groupedActivities).map(([group, groupActivities]) => {
+                  const selectedCount = groupActivities.filter(a => selectedActivities.includes(a.activity_code)).length;
+                  const totalCount = groupActivities.length;
+
+                  return (
+                    <AccordionItem key={group} value={group}>
+                      <AccordionTrigger className="text-[10px] font-semibold text-primary hover:no-underline py-1.5">
+                        <div className="flex items-center justify-between w-full pr-2">
+                          <span>{group}</span>
+                          <Badge variant="secondary" className="text-[9px] px-1.5 py-0 h-4">
+                            {selectedCount}/{totalCount}
+                          </Badge>
+                        </div>
+                      </AccordionTrigger>
+                      <AccordionContent className="space-y-1 pt-1 pb-1.5">
+                        {groupActivities.map((activity) => (
+                          <div key={activity.activity_code} className="flex items-start space-x-1.5">
+                            <Checkbox
+                              id={activity.activity_code}
+                              checked={selectedActivities.includes(activity.activity_code)}
+                              onCheckedChange={(checked) => {
+                                const isChecked = checked === true; // Radix: boolean | 'indeterminate'
+                                setSelectedActivities(prev =>
+                                  isChecked
+                                    ? (prev.includes(activity.activity_code) ? prev : [...prev, activity.activity_code])
+                                    : prev.filter(id => id !== activity.activity_code)
+                                );
+                              }}
+                              className="mt-0.5 h-3.5 w-3.5"
+                            />
+                            <div className="flex-1 flex items-center gap-1 min-w-0">
+                              <label
+                                htmlFor={activity.activity_code}
+                                className="text-[10px] font-medium cursor-pointer flex-1 truncate leading-tight"
+                                title={activity.display_name}
+                              >
+                                {activity.display_name} ({activity.base_days}gg)
+                              </label>
+                              <Dialog>
+                                <DialogTrigger asChild>
+                                  <Button variant="ghost" size="sm" className="h-4 w-4 p-0 flex-shrink-0" aria-label={`Info ${activity.display_name}`}>
+                                    <Info className="h-3 w-3" />
+                                  </Button>
+                                </DialogTrigger>
+                                <DialogContent className="max-w-2xl">
+                                  <DialogHeader>
+                                    <DialogTitle>{activity.display_name}</DialogTitle>
+                                  </DialogHeader>
+                                  <div className="space-y-3">
+                                    <div>
+                                      <p className="font-semibold">Giorni Base: {activity.base_days}</p>
+                                      <p className="text-sm text-muted-foreground">Gruppo: {activity.driver_group}</p>
+                                    </div>
+                                    <div>
+                                      <h4 className="font-semibold mb-2">Descrizione Breve</h4>
+                                      <p className="text-sm">{activity.helper_short}</p>
+                                    </div>
+                                    <div>
+                                      <h4 className="font-semibold mb-2">Dettagli Completi</h4>
+                                      <div className="text-sm whitespace-pre-line">{activity.helper_long}</div>
+                                    </div>
+                                  </div>
+                                </DialogContent>
+                              </Dialog>
+                            </div>
+                          </div>
+                        ))}
+                      </AccordionContent>
+                    </AccordionItem>
+                  );
+                })}
+              </Accordion>
+            </CardContent>
+          </Card>
+
+          {/* Col 3 - Summary */}
+          <div className="flex flex-col gap-2 h-full min-h-0">
             {/* Opzionali */}
             {optionalActivityObjects.length > 0 && (
-              <Card className="border border-dashed border-yellow-200 bg-yellow-50/40 dark:border-yellow-800/40 dark:bg-yellow-900/20">
+              <Card className="border border-dashed border-yellow-200 bg-yellow-50/40 dark:border-yellow-800/40 dark:bg-yellow-900/20 shrink-0">
                 <CardHeader className="pb-1 pt-2 px-3 shrink-0">
                   <CardTitle className="text-xs font-semibold text-yellow-900 dark:text-yellow-100">Attività opzionali</CardTitle>
                 </CardHeader>

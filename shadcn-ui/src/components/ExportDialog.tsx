@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { FileDown, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -8,6 +8,8 @@ import { Badge } from '@/components/ui/badge';
 import { Requirement } from '../types';
 import { getRequirementsByListId, getListById, generateExportData, exportToCSV, downloadCSV } from '../lib/storage';
 import { getPriorityColor, getStateColor } from '@/lib/utils';
+import { logger } from '@/lib/logger';
+import { useToast } from '@/hooks/use-toast';
 
 interface ExportDialogProps {
   listId: string;
@@ -19,13 +21,22 @@ export function ExportDialog({ listId, onClose }: ExportDialogProps) {
   const [selectedReqIds, setSelectedReqIds] = useState<string[]>([]);
   const [selectAll, setSelectAll] = useState(true);
   const [listName, setListName] = useState('');
+  const { toast } = useToast();
+  const notifyExportRequirementsError = useCallback((error: unknown) => {
+    logger.error('Failed to load export requirements', error);
+    toast({
+      variant: 'destructive',
+      title: 'Errore Supabase',
+      description: 'Impossibile caricare i requisiti per l\'export.'
+    });
+  }, [toast]);
 
   useEffect(() => {
     const loadData = async () => {
       const list = await getListById(listId);
       setListName(list?.name || 'Lista');
 
-      const reqs = await getRequirementsByListId(listId);
+      const reqs = await getRequirementsByListId(listId, notifyExportRequirementsError);
       setRequirements(reqs);
       setSelectedReqIds(reqs.map(r => r.req_id));
     };

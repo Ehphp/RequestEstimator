@@ -63,12 +63,14 @@ export type DbResult<T> = {
 export async function safeDbRead<T>(
   operation: () => Promise<T>,
   operationName: string,
-  fallbackValue: T
+  fallbackValue: T,
+  onError?: (error: unknown) => void
 ): Promise<T> {
   try {
     return await operation();
   } catch (error) {
     logger.error(`Error in ${operationName}:`, error);
+    onError?.(error);
     return fallbackValue;
   }
 }

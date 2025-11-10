@@ -8,8 +8,6 @@ import { toast } from "sonner";
 
 import { List, Requirement } from "../types";
 
-import { getTechnologyColor } from "../lib/technology-colors";
-
 import { getPrioritySolidColor, getPriorityStrokeColor } from "@/lib/utils";
 
 import { Button } from "@/components/ui/button";
@@ -45,6 +43,25 @@ const PRIORITY_BADGE: Record<Requirement["priority"], string> = {
 const TREEMAP_PASTEL_BASE = "#f8fafc";
 
 const TREEMAP_PASTEL_WEIGHT = 0.25;
+
+const LIST_COLOR_PALETTE = [
+  "#2563eb",
+  "#ea580c",
+  "#0f766e",
+  "#9333ea",
+  "#dc2626",
+  "#0891b2",
+  "#ca8a04",
+  "#93370d",
+  "#3f6212",
+  "#7c3aed",
+  "#047857",
+  "#b45309",
+  "#1d4ed8",
+  "#9d174d",
+  "#115e59",
+  "#581c87",
+];
 
 type Rgb = { r: number; g: number; b: number };
 
@@ -111,9 +128,29 @@ function mixHexColors(color: string, mix: string, weight: number): string {
   });
 }
 
-function getTreemapFillColor(technologyColor: string): string {
+function hashString(value: string): number {
+  let hash = 0;
+
+  for (let i = 0; i < value.length; i += 1) {
+    hash = (hash * 31 + value.charCodeAt(i)) >>> 0;
+  }
+
+  return hash;
+}
+
+function getListBaseColor(listId: string): string {
+  if (!listId) {
+    return LIST_COLOR_PALETTE[0];
+  }
+
+  const hash = hashString(listId);
+
+  return LIST_COLOR_PALETTE[hash % LIST_COLOR_PALETTE.length];
+}
+
+function getTreemapFillColor(baseColor: string): string {
   return mixHexColors(
-    technologyColor,
+    baseColor,
     TREEMAP_PASTEL_BASE,
     TREEMAP_PASTEL_WEIGHT,
   );
@@ -140,7 +177,7 @@ type MultiSeriesDataPoint = {
 
   fillColor: string;
 
-  technologyFillColor: string;
+  listFillColor: string;
 
   requirementId: string;
 
@@ -164,7 +201,7 @@ type SeriesMetadata = {
 
   technology: string;
 
-  technologyColor: string;
+  listColor: string;
 
   treemapFillColor: string;
 
@@ -195,7 +232,7 @@ type TooltipCustomParams = {
   };
 };
 
-type ColorMode = "technology" | "priority";
+type ColorMode = "list" | "priority";
 
 interface TreemapApexMultiSeriesProps {
   lists: List[];
@@ -292,9 +329,9 @@ function prepareMultiSeriesData(
     const technologyLabel =
       list.technology?.trim() || TECHNOLOGY_FALLBACK_LABEL;
 
-    const technologyColor = getTechnologyColor(technologyLabel);
+    const listColor = getListBaseColor(list.list_id);
 
-    const treemapFillColor = getTreemapFillColor(technologyColor);
+    const treemapFillColor = getTreemapFillColor(listColor);
 
     // Calcola percentuali all'interno della lista
 
@@ -311,7 +348,7 @@ function prepareMultiSeriesData(
 
         y: safeValue,
 
-        technologyFillColor: treemapFillColor,
+        listFillColor: treemapFillColor,
 
         fillColor: treemapFillColor,
 
@@ -340,7 +377,7 @@ function prepareMultiSeriesData(
 
       technology: technologyLabel,
 
-      technologyColor,
+      listColor,
 
       treemapFillColor,
 
@@ -356,7 +393,7 @@ function prepareMultiSeriesData(
     });
 
     return {
-      name: list.name,
+      name: "",
 
       data,
     };
@@ -408,7 +445,7 @@ export function TreemapApexMultiSeries({
 
   const navigationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  const [colorMode, setColorMode] = useState<ColorMode>("technology");
+  const [colorMode, setColorMode] = useState<ColorMode>("list");
 
   const DOUBLE_CLICK_DELAY = 400; // Aumentato da 300ms
 
@@ -440,20 +477,20 @@ export function TreemapApexMultiSeries({
       data: serie.data.map((point) => ({
         ...point,
         fillColor:
-          colorMode === "technology"
-            ? point.technologyFillColor
-            : point.priorityColor,
+          colorMode === "list" ? point.listFillColor : point.priorityColor,
       })),
     }));
 
+    const listPalette = metadata.map((meta) => meta.treemapFillColor);
+
     const paletteForMode =
-      colorMode === "technology"
-        ? metadata.map((meta) => meta.treemapFillColor)
+      colorMode === "list"
+        ? listPalette
         : [
-          getPrioritySolidColor("High"),
-          getPrioritySolidColor("Med"),
-          getPrioritySolidColor("Low"),
-        ];
+            getPrioritySolidColor("High"),
+            getPrioritySolidColor("Med"),
+            getPrioritySolidColor("Low"),
+          ];
 
     // Soglie per visibilità label
 
@@ -583,14 +620,16 @@ export function TreemapApexMultiSeries({
 
           mounted: (chartContext) => {
             const el = chartContext?.el as Element | null | undefined;
-
-            setTimeout(() => hideRotatedTreemapLabels(el), 0);
+            if (el !== undefined) {
+              setTimeout(() => hideRotatedTreemapLabels(el), 0);
+            }
           },
 
           updated: (chartContext) => {
             const el = chartContext?.el as Element | null | undefined;
-
-            setTimeout(() => hideRotatedTreemapLabels(el), 0);
+            if (el !== undefined) {
+              setTimeout(() => hideRotatedTreemapLabels(el), 0);
+            }
           },
         },
       },
@@ -752,7 +791,7 @@ export function TreemapApexMultiSeries({
 
                 <div style="font-size: 11px; color: rgba(255,255,255,0.6); display: flex; align-items: center; gap: 4px;">
 
-                  <span style="display:inline-flex;width:6px;height:6px;border-radius:999px;background:${listMeta.technologyColor};"></span>
+                  <span style="display:inline-flex;width:6px;height:6px;border-radius:999px;background:${listMeta.listColor};"></span>
 
                   <span>${listMeta.listName}</span>
 
@@ -804,7 +843,7 @@ export function TreemapApexMultiSeries({
 
                 <span style="display:inline-flex; align-items:center; gap:6px;">
 
-                  <span style="display:inline-flex;width:10px;height:10px;border-radius:3px;background:${listMeta.technologyColor};"></span>
+                  <span style="display:inline-flex;width:10px;height:10px;border-radius:3px;background:${listMeta.listColor};"></span>
 
                   <span>${listMeta.technology}</span>
 
@@ -879,34 +918,17 @@ export function TreemapApexMultiSeries({
       },
     };
 
-    // Legenda: Tecnologie (colori liste) + Priorità (colori requisiti)
+    // Legenda: Liste (colori sfondo) + Priorità (colori requisiti)
 
-    const technologyMap = new Map<
-      string,
-      { color: string; fillColor: string }
-    >();
+    const listEntries = metadata.map((meta) => ({
+      label: meta.listName,
 
-    metadata.forEach((meta) => {
-      if (!technologyMap.has(meta.technology)) {
-        technologyMap.set(meta.technology, {
-          color: meta.technologyColor,
+      color: meta.listColor,
 
-          fillColor: meta.treemapFillColor,
-        });
-      }
-    });
+      fillColor: meta.treemapFillColor,
 
-    const technologyEntries = Array.from(technologyMap.entries()).map(
-      ([label, palette]) => ({
-        label,
-
-        color: palette.color,
-
-        fillColor: palette.fillColor,
-
-        type: "technology" as const,
-      }),
-    );
+      type: "list" as const,
+    }));
 
     const priorityOrder: Requirement["priority"][] = ["High", "Med", "Low"];
 
@@ -922,7 +944,7 @@ export function TreemapApexMultiSeries({
       type: "priority" as const,
     }));
 
-    const legendEntries = [...technologyEntries, ...priorityEntries];
+    const legendEntries = [...listEntries, ...priorityEntries];
 
     return {
       series: chartSeries,
@@ -988,17 +1010,17 @@ export function TreemapApexMultiSeries({
         </span>
       </div>
       <div className="text-center text-[10px] text-muted-foreground/70 px-4">
-        Riempimento pastello = Tecnologia - Badge [A/M/B] = Priorita
+        Riempimento pastello = Lista - Badge [A/M/B] = Priorita
       </div>
       <div className="flex flex-wrap items-center justify-center gap-2 py-1">
         <Button
           type="button"
-          variant={colorMode === "technology" ? "secondary" : "ghost"}
+          variant={colorMode === "list" ? "secondary" : "ghost"}
           size="sm"
           className="h-6 px-2 text-[10px]"
-          onClick={() => setColorMode("technology")}
+          onClick={() => setColorMode("list")}
         >
-          Palette Tecnologie
+          Palette Liste
         </Button>
         <Button
           type="button"
@@ -1014,31 +1036,34 @@ export function TreemapApexMultiSeries({
       {showLegend && legendEntries.length > 0 && (
         <div className="mt-4 px-1">
           <div className="flex flex-col sm:flex-row gap-4 sm:gap-8 items-start sm:items-center justify-center">
-            {/* Tecnologie (Liste) */}
+            {/* Liste */}
 
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-xs font-semibold text-foreground/90 mr-1">
-                Tecnologie (Liste):
+                Liste:
               </span>
 
               {legendEntries
 
-                .filter((e) => e.type === "technology")
+                .filter((e) => e.type === "list")
 
-                .map(({ label, color, fillColor }) => (
+                .map((entry) => (
                   <div
-                    key={label}
+                    key={entry.label}
                     className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-muted/30 hover:bg-muted/50 transition-colors"
                   >
                     <span
                       className="h-3 w-3 rounded-sm shadow-sm border border-white/30"
                       style={{
-                        backgroundColor: fillColor ?? color,
-                        borderColor: color,
+                        backgroundColor:
+                          entry.type === "list"
+                            ? entry.fillColor ?? entry.color
+                            : entry.color,
+                        borderColor: entry.color,
                       }}
                     />
 
-                    <span className="text-xs text-foreground/80">{label}</span>
+                    <span className="text-xs text-foreground/80">{entry.label}</span>
                   </div>
                 ))}
             </div>
@@ -1058,19 +1083,22 @@ export function TreemapApexMultiSeries({
 
                 .filter((e) => e.type === "priority")
 
-                .map(({ label, color, border, badge }) => (
+                .map((entry) => (
                   <div
-                    key={label}
+                    key={entry.label}
                     className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-muted/30 hover:bg-muted/50 transition-colors"
                   >
                     <span
                       className="h-4 w-4 rounded-sm shadow-sm border text-[9px] font-semibold text-white flex items-center justify-center"
-                      style={{ backgroundColor: color, borderColor: border }}
+                      style={{
+                        backgroundColor: entry.color,
+                        borderColor: entry.type === 'priority' ? entry.border : entry.color
+                      }}
                     >
-                      {badge}
+                      {entry.type === 'priority' ? entry.badge : ''}
                     </span>
 
-                    <span className="text-xs text-foreground/80">{label}</span>
+                    <span className="text-xs text-foreground/80">{entry.label}</span>
                   </div>
                 ))}
             </div>

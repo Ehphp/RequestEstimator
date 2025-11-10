@@ -6,20 +6,23 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Requirement, Estimate, List } from '../types';
-import { getEstimatesByReqId } from '../lib/storage';
+import { getEstimatesByReqId, getRequirementsByListId } from '../lib/storage';
 import { getPriorityColor, getStateColor, parseLabels } from '@/lib/utils';
 import { logger } from '@/lib/logger';
 import { EstimateEditor } from './EstimateEditor';
 import { ThemeToggle } from './ThemeToggle';
+import { RequirementRelations } from './RequirementRelations';
 
 interface RequirementDetailViewProps {
     requirement: Requirement;
     list: List;
     onBack: () => void;
+    onNavigateToRequirement?: (reqId: string) => void;
 }
 
-export function RequirementDetailView({ requirement, list, onBack }: RequirementDetailViewProps) {
+export function RequirementDetailView({ requirement, list, onBack, onNavigateToRequirement }: RequirementDetailViewProps) {
     const [estimates, setEstimates] = useState<Estimate[]>([]);
+    const [allRequirements, setAllRequirements] = useState<Requirement[]>([]);
     const [loading, setLoading] = useState(true);
     const [editMode, setEditMode] = useState(false);
     const [selectedEstimate, setSelectedEstimate] = useState<Estimate | null>(null);
@@ -42,7 +45,8 @@ export function RequirementDetailView({ requirement, list, onBack }: Requirement
 
     useEffect(() => {
         loadEstimates();
-    }, [requirement.req_id]);
+        loadAllRequirements();
+    }, [requirement.req_id, list.list_id]);
 
     const loadEstimates = async () => {
         setLoading(true);
@@ -62,6 +66,25 @@ export function RequirementDetailView({ requirement, list, onBack }: Requirement
             setLoading(false);
         }
     };
+
+    const loadAllRequirements = async () => {
+        try {
+            const data = await getRequirementsByListId(list.list_id);
+            setAllRequirements(data);
+            logger.info('Loaded all requirements for relations:', { count: data.length });
+        } catch (error) {
+            logger.error('Failed to load requirements:', error);
+        }
+    };
+
+    const handleNavigateToRequirement = useCallback(
+        (reqId: string) => {
+            if (onNavigateToRequirement) {
+                onNavigateToRequirement(reqId);
+            }
+        },
+        [onNavigateToRequirement]
+    );
 
     const latestEstimate = estimates.length > 0 ? estimates[0] : null;
 
@@ -401,6 +424,13 @@ export function RequirementDetailView({ requirement, list, onBack }: Requirement
                                     </div>
                                 </div>
                             )}
+
+                            {/* Relations Section */}
+                            <RequirementRelations
+                                currentRequirement={requirement}
+                                allRequirements={allRequirements}
+                                onNavigate={handleNavigateToRequirement}
+                            />
                         </CardContent>
                     </Card>
 

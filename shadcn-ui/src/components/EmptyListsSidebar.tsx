@@ -1,4 +1,4 @@
-import { AlertCircle, FileText, Trash2, User } from 'lucide-react';
+import { AlertCircle, FileText, Trash2, User, ListChecks } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';

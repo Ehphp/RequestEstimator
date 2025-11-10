@@ -64,26 +64,34 @@ async function deleteEntityWithCascade({
 }
 
 // Lists Management
-export async function getLists(statusFilter: List['status'][] = ['Active']): Promise<List[]> {
-  return safeDbRead(async () => {
-    let query = supabase
-      .from(TABLES.LISTS)
-      .select('*')
-      .order('created_on', { ascending: false });
+export async function getLists(
+  statusFilter: List['status'][] = ['Active'],
+  onError?: (error: unknown) => void
+): Promise<List[]> {
+  return safeDbRead(
+    async () => {
+      let query = supabase
+        .from(TABLES.LISTS)
+        .select('*')
+        .order('created_on', { ascending: false });
 
-    if (statusFilter.length > 0) {
-      query = query.in('status', statusFilter);
-    }
+      if (statusFilter.length > 0) {
+        query = query.in('status', statusFilter);
+      }
 
-    const { data, error } = await query;
+      const { data, error } = await query;
 
-    if (error) {
-      throw error;
-    }
+      if (error) {
+        throw error;
+      }
 
-    logCrud.read('Lists', data?.length);
-    return data || [];
-  }, 'getLists', []);
+      logCrud.read('Lists', data?.length);
+      return data || [];
+    },
+    'getLists',
+    [],
+    onError
+  );
 }
 
 export async function getListById(listId: string): Promise<List | null> {
@@ -136,7 +144,10 @@ export async function deleteList(listId: string): Promise<void> {
 }
 
 // Requirements Management
-export async function getRequirementsByListId(listId: string): Promise<Requirement[]> {
+export async function getRequirementsByListId(
+  listId: string,
+  onError?: (error: unknown) => void
+): Promise<Requirement[]> {
   return safeDbRead(async () => {
     const { data, error } = await supabase
       .from(TABLES.REQUIREMENTS)
@@ -149,7 +160,7 @@ export async function getRequirementsByListId(listId: string): Promise<Requireme
     }
 
     return data || [];
-  }, 'getRequirementsByListId', []);
+  }, 'getRequirementsByListId', [], onError);
 }
 
 export async function saveRequirement(requirement: Requirement): Promise<void> {
@@ -230,7 +241,10 @@ export async function getLatestEstimate(reqId: string): Promise<Estimate | undef
   }, 'getLatestEstimate', undefined);
 }
 
-export async function getLatestEstimates(reqIds: string[]): Promise<Record<string, Estimate | undefined>> {
+export async function getLatestEstimates(
+  reqIds: string[],
+  onError?: (error: unknown) => void
+): Promise<Record<string, Estimate | undefined>> {
   const uniqueReqIds = Array.from(new Set(reqIds)).filter(Boolean) as string[];
 
   if (uniqueReqIds.length === 0) {
@@ -259,7 +273,7 @@ export async function getLatestEstimates(reqIds: string[]): Promise<Record<strin
     });
 
     return latestMap;
-  }, 'getLatestEstimates', {} as EstimateMap);
+  }, 'getLatestEstimates', {} as EstimateMap, onError);
 }
 
 /**
@@ -361,23 +375,28 @@ export async function getContingencyBands(): Promise<ContingencyBand[]> {
 }
 
 // Sticky Defaults Management
-export async function getStickyDefaults(userId: string, listId: string): Promise<StickyDefaults | null> {
-  const { data, error } = await supabase
-    .from(TABLES.STICKY_DEFAULTS)
-    .select('*')
-    .eq('user_id', userId)
-    .eq('list_id', listId)
-    .single();
+export async function getStickyDefaults(
+  userId: string,
+  listId: string,
+  onError?: (error: unknown) => void
+): Promise<StickyDefaults | null> {
+  return safeDbRead(async () => {
+    const { data, error } = await supabase
+      .from(TABLES.STICKY_DEFAULTS)
+      .select('*')
+      .eq('user_id', userId)
+      .eq('list_id', listId)
+      .single();
 
-  if (error) {
-    // Not found is OK - significa nessun default salvato ancora
-    if (isNotFoundError(error)) {
-      return null;
+    if (error) {
+      if (isNotFoundError(error)) {
+        return null;
+      }
+      throwDbError(error, 'Impossibile recuperare i defaults');
     }
-    throwDbError(error, 'Impossibile recuperare i defaults');
-  }
 
-  return data;
+    return data;
+  }, 'getStickyDefaults', null, onError);
 }
 
 export async function saveStickyDefaults(defaults: StickyDefaults): Promise<void> {

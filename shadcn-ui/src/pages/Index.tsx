@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useToast } from '@/hooks/use-toast';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -58,7 +59,19 @@ export default function Index() {
   const allowDraftStatus = import.meta.env.VITE_ENABLE_DRAFT_STATUS === 'true';
 
   const { currentUser } = useAuth();
+  const { toast } = useToast();
   const resolvedCurrentUser = currentUser ?? 'current.user@example.com';
+  const createSupabaseReadErrorHandler = useCallback(
+    (description: string) => (error: unknown) => {
+      logger.error('Supabase read error', { description, error });
+      toast({
+        variant: 'destructive',
+        title: 'Errore Supabase',
+        description
+      });
+    },
+    [toast]
+  );
 
   const [lists, setLists] = useState<List[]>([]);
   const [listStats, setListStats] = useState<Record<string, { totalRequirements: number; totalDays: number; criticalPathDays: number }>>({});
@@ -109,6 +122,8 @@ export default function Index() {
     default_business_owner?: string;
     default_labels?: string;
     default_description?: string;
+    default_environments?: '1 env' | '2 env' | '3 env';
+    default_stakeholders?: '1 team' | '2-3 team' | '4+ team';
   }>(() => {
     const defaults = getListDefaults(resolvedCurrentUser);
     return {
@@ -122,7 +137,9 @@ export default function Index() {
       default_priority: undefined,
       default_business_owner: undefined,
       default_labels: undefined,
-      default_description: undefined
+      default_description: undefined,
+      default_environments: undefined,
+      default_stakeholders: undefined
     };
   });
   const [defaultSources, setDefaultSources] = useState<Record<string, string>>({
@@ -136,6 +153,23 @@ export default function Index() {
     () => lists.filter((list) => list.status === 'Active'),
     [lists]
   );
+  const { emptyLists, nonEmptyLists } = useMemo(() => {
+    const buckets = {
+      emptyLists: [] as List[],
+      nonEmptyLists: [] as List[]
+    };
+
+    lists.forEach((list) => {
+      const stats = listStats[list.list_id] ?? { totalRequirements: 0, totalDays: 0, criticalPathDays: 0 };
+      if (stats.totalRequirements === 0 || stats.totalDays === 0) {
+        buckets.emptyLists.push(list);
+      } else {
+        buckets.nonEmptyLists.push(list);
+      }
+    });
+
+    return buckets;
+  }, [lists, listStats]);
   const resetForm = useCallback(() => {
     const defaults = getListDefaults(resolvedCurrentUser);
     setFormData({
@@ -149,7 +183,9 @@ export default function Index() {
       default_priority: undefined,
       default_business_owner: undefined,
       default_labels: undefined,
-      default_description: undefined
+      default_description: undefined,
+      default_environments: undefined,
+      default_stakeholders: undefined
     });
     setDefaultSources({
       owner: 'Current User',
@@ -223,15 +259,26 @@ export default function Index() {
       setLoading(true);
       setError(null);
 
-      const listsData = await getLists(listStatusFilter);
+      const listsData = await getLists(
+        listStatusFilter,
+        createSupabaseReadErrorHandler('Impossibile caricare le liste. Controlla la connessione.')
+      );
       setLists(listsData);
 
       // Load stats for all lists
       if (listsData.length > 0) {
         const statsPromises = listsData.map(async (list) => {
-          const reqs = await getRequirementsByListId(list.list_id);
+          const reqs = await getRequirementsByListId(
+            list.list_id,
+            createSupabaseReadErrorHandler(`Impossibile caricare i requisiti per ${list.name}.`)
+          );
           const reqIds = reqs.map(r => r.req_id);
-          const estimates = reqIds.length > 0 ? await getLatestEstimates(reqIds) : {};
+          const estimates = reqIds.length > 0
+            ? await getLatestEstimates(
+              reqIds,
+              createSupabaseReadErrorHandler('Impossibile caricare le stime delle liste.')
+            )
+            : {};
           const totalDays = reqs.reduce((sum, req) => sum + (estimates[req.req_id]?.total_days || 0), 0);
           const requirementNodes: RequirementTreemapStat[] = reqs
             .map((req) => ({
@@ -315,7 +362,10 @@ export default function Index() {
       if (reset) {
         setRequirements([]);
       }
-      const requirementsData = await getRequirementsByListId(listId);
+      const requirementsData = await getRequirementsByListId(
+        listId,
+        createSupabaseReadErrorHandler('Impossibile caricare i requisiti della lista. Controlla la connessione.')
+      );
       if (latestListIdRef.current !== listId) {
         return;
       }
@@ -489,6 +539,8 @@ export default function Index() {
       default_business_owner: formData.default_business_owner,
       default_labels: formData.default_labels,
       default_description: formData.default_description,
+      default_environments: formData.default_environments,
+      default_stakeholders: formData.default_stakeholders,
       created_on: new Date().toISOString(),
       created_by: resolvedCurrentUser
     };
@@ -580,7 +632,10 @@ export default function Index() {
     setPendingRequirementCount(null);
     setDeleteMetadataLoading(true);
     try {
-      const requirements = await getRequirementsByListId(list.list_id);
+      const requirements = await getRequirementsByListId(
+        list.list_id,
+        createSupabaseReadErrorHandler('Impossibile contare i requisiti della lista. Controlla la connessione.')
+      );
       setPendingRequirementCount(requirements.length);
     } catch (err) {
       logger.error('Error counting requirements for list:', err);
@@ -642,6 +697,12 @@ export default function Index() {
         requirement={selectedRequirement}
         list={selectedList}
         onBack={handleBackToRequirements}
+        onNavigateToRequirement={(reqId) => {
+          const req = requirements.find((r) => r.req_id === reqId);
+          if (req) {
+            handleSelectRequirement(req);
+          }
+        }}
       />
     );
   }
@@ -956,6 +1017,72 @@ export default function Index() {
                 </div>
               </section>
 
+              <section className="rounded-xl border bg-blue-50/40 dark:bg-blue-950/20 p-4 space-y-4">
+                <div>
+                  <p className="text-sm font-semibold">Valori ereditati dalle stime</p>
+                  <p className="text-xs text-muted-foreground">
+                    Imposta i valori di default per Ambienti e Stakeholder che verranno applicati alle nuove stime create per i requisiti di questa lista.
+                  </p>
+                </div>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="default-environments" className="text-xs">
+                      Ambienti default
+                    </Label>
+                    <Select
+                      value={formData.default_environments || 'none'}
+                      onValueChange={(value) =>
+                        setFormData({
+                          ...formData,
+                          default_environments: value === 'none' ? undefined : (value as '1 env' | '2 env' | '3 env')
+                        })
+                      }
+                    >
+                      <SelectTrigger className="h-9">
+                        <SelectValue placeholder="Seleziona numero ambienti" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">Non specificato</SelectItem>
+                        <SelectItem value="1 env">1 ambiente</SelectItem>
+                        <SelectItem value="2 env">2 ambienti</SelectItem>
+                        <SelectItem value="3 env">3 ambienti</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="text-[11px] text-muted-foreground">
+                      Numero di ambienti tipicamente coinvolti nei deployment (dev, test, prod).
+                    </p>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label htmlFor="default-stakeholders" className="text-xs">
+                      Stakeholder default
+                    </Label>
+                    <Select
+                      value={formData.default_stakeholders || 'none'}
+                      onValueChange={(value) =>
+                        setFormData({
+                          ...formData,
+                          default_stakeholders: value === 'none' ? undefined : (value as '1 team' | '2-3 team' | '4+ team')
+                        })
+                      }
+                    >
+                      <SelectTrigger className="h-9">
+                        <SelectValue placeholder="Seleziona complessità stakeholder" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">Non specificato</SelectItem>
+                        <SelectItem value="1 team">1 team</SelectItem>
+                        <SelectItem value="2-3 team">2-3 team</SelectItem>
+                        <SelectItem value="4+ team">4+ team</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="text-[11px] text-muted-foreground">
+                      Numero di team/stakeholder tipicamente coinvolti nelle decisioni di progetto.
+                    </p>
+                  </div>
+                </div>
+              </section>
+
               <div className="flex flex-col gap-3 border-t pt-4 sm:flex-row sm:items-center sm:justify-between">
                 <p className="text-xs text-muted-foreground">
                   Potrai aggiornare questi dati in seguito dalla scheda lista.
@@ -1007,10 +1134,8 @@ export default function Index() {
           <div className="flex gap-2 flex-1 min-h-0">
             {/* Empty Lists Sidebar */}
             <EmptyListsSidebar
-              emptyLists={lists.filter(list => {
-                const stats = listStats[list.list_id] || { totalRequirements: 0, totalDays: 0, criticalPathDays: 0 };
-                return stats.totalRequirements === 0 || stats.totalDays === 0;
-              })}
+              emptyLists={emptyLists}
+              nonEmptyLists={nonEmptyLists}
               listStats={listStats}
               onSelectList={handleSelectList}
               onDeleteList={openDeleteDialog}

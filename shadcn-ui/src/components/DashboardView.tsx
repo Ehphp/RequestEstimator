@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Calendar, Users, SlidersHorizontal, HelpCircle } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/tooltip';
 import { List, Requirement, DashboardFilters, RequirementWithEstimate } from '../types';
 import { TreemapApexRequirements } from './TreemapApexRequirements';
+import { logger } from '@/lib/logger';
 import {
     prepareRequirementsWithEstimates,
     calculateDashboardKPIs,
@@ -26,6 +27,7 @@ import {
     calculateRequirementCriticalPath
 } from '../lib/calculations';
 import { getPrioritySolidClass } from '@/lib/utils';
+import { useToast } from '@/hooks/use-toast';
 import { RISK_THRESHOLDS } from '@/lib/constants';
 
 // Mini Sparkline component
@@ -115,7 +117,7 @@ interface DashboardViewProps {
     onSelectRequirement: (requirement: Requirement) => void;
 }
 
-export function DashboardView({ list, requirements, onBack, onSelectRequirement }: DashboardViewProps) {
+export function DashboardView({ requirements, onSelectRequirement }: DashboardViewProps) {
     const [reqsWithEstimates, setReqsWithEstimates] = useState<RequirementWithEstimate[]>([]);
     const [filters, setFilters] = useState<DashboardFilters>({
         priorities: ['High', 'Med', 'Low'],
@@ -126,13 +128,23 @@ export function DashboardView({ list, requirements, onBack, onSelectRequirement 
         holidays: []
     });
     const [priorityPolicy, setPriorityPolicy] = useState<'Neutral' | 'PriorityFirst'>('Neutral');
+    const { toast } = useToast();
+
+    const notifyDashboardEstimatesError = useCallback((error: unknown) => {
+        logger.error('Dashboard estimates load failed', error);
+        toast({
+            variant: 'destructive',
+            title: 'Errore Supabase',
+            description: 'Impossibile caricare le stime per la dashboard.'
+        });
+    }, [toast]);
 
     useEffect(() => {
         loadData();
     }, [requirements]); // eslint-disable-line react-hooks/exhaustive-deps
 
     const loadData = async () => {
-        const data = await prepareRequirementsWithEstimates(requirements);
+        const data = await prepareRequirementsWithEstimates(requirements, { onError: notifyDashboardEstimatesError });
         setReqsWithEstimates(data);
     };
 

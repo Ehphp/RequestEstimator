@@ -145,12 +145,18 @@ export function mapComplexityToDifficulty(complexity: string): 1 | 2 | 3 | 4 | 5
 /**
  * Prepara i dati combinando requirements e loro estimates
  */
-export async function prepareRequirementsWithEstimates(requirements: Requirement[]): Promise<RequirementWithEstimate[]> {
+export async function prepareRequirementsWithEstimates(
+  requirements: Requirement[],
+  options?: { onError?: (error: unknown) => void }
+): Promise<RequirementWithEstimate[]> {
   if (requirements.length === 0) {
     return [];
   }
 
-  const latestEstimates = await getLatestEstimates(requirements.map(req => req.req_id));
+  const latestEstimates = await getLatestEstimates(
+    requirements.map(req => req.req_id),
+    options?.onError
+  );
 
   return requirements.map((req) => {
     const estimate = latestEstimates[req.req_id] || null;

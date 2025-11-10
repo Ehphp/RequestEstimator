@@ -37,13 +37,12 @@ import { parseLabels } from './utils';
  */
 
 // Sticky defaults management (now using Supabase)
-export async function getStickyDefaults(user: string, listId: string): Promise<StickyDefaults | null> {
-  try {
-    return await getSupabaseStickyDefaults(user, listId);
-  } catch (error) {
-    logger.error('Error getting sticky defaults:', error);
-    return null;
-  }
+export async function getStickyDefaults(
+  user: string,
+  listId: string,
+  onError?: (error: unknown) => void
+): Promise<StickyDefaults | null> {
+  return await getSupabaseStickyDefaults(user, listId, onError);
 }
 
 export async function saveStickyDefaults(sticky: StickyDefaults): Promise<void> {
@@ -178,19 +177,15 @@ export function getRequirementDefaults(
 export async function getEstimateDefaults(
   requirement: Requirement,
   list: List,
-  currentUser: string
+  currentUser: string,
+  options?: { onStickyDefaultsError?: (error: unknown) => void }
 ): Promise<{ defaults: Partial<Estimate>; sources: DefaultSource[] }> {
   const preset = list.preset_key ? presets.find(p => p.preset_key === list.preset_key) : null;
-  const sticky = await getStickyDefaults(currentUser, list.list_id);  // Ora è async
+  const sticky = await getStickyDefaults(currentUser, list.list_id, options?.onStickyDefaultsError);  // Ora è async
   const sources: DefaultSource[] = [];
 
-  // Scenario
-  let scenario = 'Standard';
-  let scenarioSource = 'Default';
-  if (preset) {
-    scenario = 'A';
-    scenarioSource = `Preset: ${preset.name}`;
-  }
+  // Scenario (auto-generated, no longer from defaults)
+  const scenario = 'Standard'; // Legacy fallback, actual scenario name generated in EstimateEditor
 
   // Complexity - sticky first, then preset, then default
   let complexity = 'Medium';
@@ -203,10 +198,13 @@ export async function getEstimateDefaults(
     complexitySource = `Preset: ${preset.name}`;
   }
 
-  // Environments - preset or default
+  // Environments - list default, then preset, then default
   let environments = '2 env';
   let environmentsSource = 'Default';
-  if (preset) {
+  if (list.default_environments) {
+    environments = list.default_environments;
+    environmentsSource = 'List Default';
+  } else if (preset) {
     environments = preset.environments;
     environmentsSource = `Preset: ${preset.name}`;
   }
@@ -219,10 +217,17 @@ export async function getEstimateDefaults(
     reuseSource = `Preset: ${preset.name}`;
   }
 
-  // Stakeholders - inferred from labels
-  const labels = parseLabels(requirement.labels);
-  const stakeholders = inferStakeholdersFromLabels(labels);
-  const stakeholdersSource = labels.length > 0 ? 'Labels Analysis' : (preset ? `Preset: ${preset.name}` : 'Default');
+  // Stakeholders - list default, then inferred from labels
+  let stakeholders = '1 team';
+  let stakeholdersSource = 'Default';
+  if (list.default_stakeholders) {
+    stakeholders = list.default_stakeholders;
+    stakeholdersSource = 'List Default';
+  } else {
+    const labels = parseLabels(requirement.labels);
+    stakeholders = inferStakeholdersFromLabels(labels);
+    stakeholdersSource = labels.length > 0 ? 'Labels Analysis' : (preset ? `Preset: ${preset.name}` : 'Default');
+  }
 
   // Activities - preset or sticky
   let includedActivities: string[] = [];
@@ -317,8 +322,8 @@ export async function updateStickyDefaults(
 export async function resetToDefaults(
   requirement: Requirement,
   list: List,
-  currentUser: string
+  currentUser: string,
+  options?: { onStickyDefaultsError?: (error: unknown) => void }
 ): Promise<{ defaults: Partial<Estimate>; sources: DefaultSource[] }> {
-  // Clear sticky defaults for this context and recalculate
-  return await getEstimateDefaults(requirement, list, currentUser);
+  return await getEstimateDefaults(requirement, list, currentUser, options);
 }

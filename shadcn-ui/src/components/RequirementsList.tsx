@@ -138,6 +138,15 @@ export function RequirementsList({
   onListUpdated
 }: RequirementsListProps) {
   const { toast } = useToast();
+
+  const notifyEstimateLoadError = useCallback((error: unknown) => {
+    logger.error('Error loading estimate summaries', error);
+    toast({
+      variant: 'destructive',
+      title: 'Errore Supabase',
+      description: 'Impossibile caricare le stime recenti. Controlla la connessione.'
+    });
+  }, [toast]);
   const titleInputRef = useRef<HTMLInputElement>(null) as React.RefObject<HTMLInputElement>;
   const [isFormDialogOpen, setIsFormDialogOpen] = useState(false);
   const [editingRequirement, setEditingRequirement] = useState<Requirement | null>(null);
@@ -321,7 +330,7 @@ export function RequirementsList({
 
     setEstimatesLoading(true);
 
-    prepareRequirementsWithEstimates(requirements)
+    prepareRequirementsWithEstimates(requirements, { onError: notifyEstimateLoadError })
       .then((summaries) => {
         if (!isMounted) return;
         const entries = summaries.map((summary) => [summary.requirement.req_id, summary] as const);
@@ -339,7 +348,7 @@ export function RequirementsList({
     return () => {
       isMounted = false;
     };
-  }, [requirements]);
+  }, [requirements, notifyEstimateLoadError]);
 
   const requirementsWithMeta = useMemo<RequirementWithMeta[]>(() => {
     return requirements.map((requirement) => {
@@ -406,6 +415,7 @@ export function RequirementsList({
   }, [requirements]);
 
   const parentSelectOptions = useMemo(() => {
+    const MAX_HIERARCHY_DEPTH = 5;
     const flattened = flattenRequirementTree(requirementTree);
     const blockedIds = new Set<string>();
 
@@ -414,14 +424,33 @@ export function RequirementsList({
       getDescendantIds(requirementTree, editingRequirement.req_id).forEach((id) => blockedIds.add(id));
     }
 
+    // Helper to calculate depth of a requirement
+    const getRequirementDepth = (reqId: string): number => {
+      let depth = 0;
+      let currentReq = requirements.find(r => r.req_id === reqId);
+
+      while (currentReq?.parent_req_id && depth < MAX_HIERARCHY_DEPTH) {
+        currentReq = requirements.find(r => r.req_id === currentReq!.parent_req_id);
+        depth++;
+      }
+
+      return depth;
+    };
+
     return flattened
       .filter(({ item }) => !blockedIds.has(item.requirement.req_id))
-      .map(({ item, depth }) => ({
-        value: item.requirement.req_id,
-        label: item.requirement.title || item.requirement.req_id,
-        depth
-      }));
-  }, [requirementTree, editingRequirement]);
+      .map(({ item, depth }) => {
+        const reqDepth = getRequirementDepth(item.requirement.req_id);
+        const disabled = reqDepth >= MAX_HIERARCHY_DEPTH;
+
+        return {
+          value: item.requirement.req_id,
+          label: item.requirement.title || item.requirement.req_id,
+          depth,
+          disabled
+        };
+      });
+  }, [requirementTree, editingRequirement, requirements]);
 
   // Sync debounced search with filters
   useEffect(() => {
