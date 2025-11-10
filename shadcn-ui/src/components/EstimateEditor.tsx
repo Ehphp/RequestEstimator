@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { ArrowLeft, Save, Info, AlertCircle, Copy, Sparkles, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -50,58 +50,71 @@ export function EstimateEditor({ requirement, list, onBack, selectedEstimate }: 
   const [errors, setErrors] = useState<string[]>([]);
   const [calculatedEstimate, setCalculatedEstimate] = useState<Partial<Estimate> | null>(null);
   const [previousEstimates, setPreviousEstimates] = useState<Estimate[]>([]);
-  const isInitializedRef = useRef(false);
   const [autoCalcReady, setAutoCalcReady] = useState(false);
 
+  // Load previous estimates
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadEstimates = async () => {
+      const estimates = await getEstimatesByReqId(requirement.req_id);
+      if (isMounted) {
+        setPreviousEstimates(estimates);
+      }
+    };
+
+    loadEstimates();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [requirement.req_id]);
+
+  // Initialize form data
   useEffect(() => {
     let isMounted = true;
     setAutoCalcReady(false);
 
     const loadInitialData = async () => {
-      // Load previous estimates asynchronously
-      const estimates = await getEstimatesByReqId(requirement.req_id);
-      if (!isMounted) return;
-      setPreviousEstimates(estimates);
+      if (!currentUser) return;
 
-      if (!isInitializedRef.current && currentUser) {
-        // If a specific estimate is selected, load its data
-        if (selectedEstimate) {
-          setScenario(selectedEstimate.scenario);
-          setComplexity(selectedEstimate.complexity);
-          setEnvironments(selectedEstimate.environments);
-          setReuse(selectedEstimate.reuse);
-          setStakeholders(selectedEstimate.stakeholders);
-          setSelectedActivities([...selectedEstimate.included_activities]);
-          setSelectedRisks([...selectedEstimate.selected_risks]);
-          setIncludeOptional(selectedEstimate.include_optional);
+      // If a specific estimate is selected, load its data
+      if (selectedEstimate) {
+        logger.info('Loading selected estimate data:', { estimate_id: selectedEstimate.estimate_id });
+        setScenario(selectedEstimate.scenario);
+        setComplexity(selectedEstimate.complexity);
+        setEnvironments(selectedEstimate.environments);
+        setReuse(selectedEstimate.reuse);
+        setStakeholders(selectedEstimate.stakeholders);
+        setSelectedActivities([...selectedEstimate.included_activities]);
+        setSelectedRisks([...selectedEstimate.selected_risks]);
+        setIncludeOptional(selectedEstimate.include_optional);
 
-          // Mark all as overridden when viewing existing estimate
-          setOverriddenFields({
-            complexity: true,
-            environments: true,
-            reuse: true,
-            stakeholders: true,
-            activities: true,
-            risks: true
-          });
-          setDefaultSources([]);
-        } else {
-          // Apply smart defaults on first load
-          const { defaults, sources } = await getEstimateDefaults(requirement, list, currentUser);
-          if (!isMounted) return;
+        // Mark all as overridden when viewing existing estimate
+        setOverriddenFields({
+          complexity: true,
+          environments: true,
+          reuse: true,
+          stakeholders: true,
+          activities: true,
+          risks: true
+        });
+        setDefaultSources([]);
+      } else {
+        // Apply smart defaults on first load
+        const { defaults, sources } = await getEstimateDefaults(requirement, list, currentUser);
+        if (!isMounted) return;
 
-          setScenario(defaults.scenario || 'A');
-          setComplexity(defaults.complexity || '');
-          setEnvironments(defaults.environments || '');
-          setReuse(defaults.reuse || '');
-          setStakeholders(defaults.stakeholders || '');
-          setSelectedActivities(defaults.included_activities || []);
-          setSelectedRisks(defaults.selected_risks || []);
-          setIncludeOptional(defaults.include_optional || false);
+        setScenario(defaults.scenario || 'A');
+        setComplexity(defaults.complexity || '');
+        setEnvironments(defaults.environments || '');
+        setReuse(defaults.reuse || '');
+        setStakeholders(defaults.stakeholders || '');
+        setSelectedActivities(defaults.included_activities || []);
+        setSelectedRisks(defaults.selected_risks || []);
+        setIncludeOptional(defaults.include_optional || false);
 
-          setDefaultSources(sources);
-        }
-        isInitializedRef.current = true;
+        setDefaultSources(sources);
       }
 
       if (isMounted) {
@@ -114,7 +127,7 @@ export function EstimateEditor({ requirement, list, onBack, selectedEstimate }: 
     return () => {
       isMounted = false;
     };
-  }, [requirement.req_id, list, currentUser, selectedEstimate]);
+  }, [selectedEstimate?.estimate_id, requirement.req_id, list, currentUser]);
 
   const groupedActivities = activities.reduce((groups, activity) => {
     const group = activity.driver_group;
