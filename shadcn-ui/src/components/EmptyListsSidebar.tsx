@@ -5,15 +5,8 @@ import { Card, CardContent } from '@/components/ui/card';
 import { List } from '../types';
 
 import { getTechnologyColor } from '../lib/technology-colors';
-import { getListBaseColor, mixHexColors, hexToRgb } from './TreemapApexMultiSeries';
-// Funzione per scegliere colore testo leggibile su background
-function getContrastTextColor(bgColor: string): string {
-    const rgb = hexToRgb(bgColor);
-    if (!rgb) return '#222';
-    // Calcolo luminanza relativa (WCAG)
-    const luminance = (0.2126 * rgb.r + 0.7152 * rgb.g + 0.0722 * rgb.b) / 255;
-    return luminance > 0.6 ? '#222' : '#fff';
-}
+import { getListBaseColor } from './TreemapApexMultiSeries';
+import { ensureAccessibleCardColor, contrastRatio } from '@/lib/color-utils';
 
 interface EmptyListsSidebarProps {
     emptyLists: List[];
@@ -143,8 +136,16 @@ export function EmptyListsSidebar({
                         const listBaseColor = getListBaseColor(list.list_id);
                         const treemapPastel = '#f8fafc';
                         const pastelWeight = 0.25;
-                        const cardColor = mixHexColors(listBaseColor, treemapPastel, pastelWeight);
-                        const textColor = getContrastTextColor(cardColor);
+                        // Ensure accessible background/text pair using small adjustments to the pastel weight
+                        const { bg: cardColor, text: textColor } = ensureAccessibleCardColor(
+                            listBaseColor,
+                            treemapPastel,
+                            pastelWeight,
+                            4.5
+                        );
+                        // Accent colors (icons / small labels): allow the palette accent only if it has sufficient contrast
+                        const accentOk = contrastRatio(listBaseColor, cardColor) >= 3.0;
+                        const accentColor = accentOk ? listBaseColor : textColor;
                         // Esempio: nome lista sempre bold, owner in accent, req count in info, technology badge già colorato
                         return (
                             <Card
@@ -159,7 +160,7 @@ export function EmptyListsSidebar({
                             >
                                 <CardContent className="px-2 py-1.5">
                                     <div className="flex items-start gap-1.5">
-                                        <ListChecks className="mt-0.5 h-3.5 w-3.5 shrink-0" style={{ color: listBaseColor }} />
+                                        <ListChecks className="mt-0.5 h-3.5 w-3.5 shrink-0" style={{ color: accentColor }} />
                                         <div className="min-w-0 flex-1 space-y-0.5">
                                             <div className="flex items-center gap-1.5">
                                                 <h4 className="truncate text-xs font-bold leading-tight" style={{ color: textColor }}>{list.name}</h4>
@@ -177,13 +178,13 @@ export function EmptyListsSidebar({
                                                 )}
                                             </div>
                                             <div className="flex flex-wrap items-center gap-1.5 text-[10px]">
-                                                <span style={{ color: listBaseColor, fontWeight: 600 }}>Req: {stats.totalRequirements}</span>
+                                                <span style={{ color: accentColor, fontWeight: 600 }}>Req: {stats.totalRequirements}</span>
                                                 {list.owner && (
                                                     <>
                                                         <span style={{ color: textColor, opacity: 0.5 }}>&middot;</span>
                                                         <span className="flex items-center gap-0.5 truncate" style={{ color: textColor }}>
-                                                            <User className="h-2.5 w-2.5" style={{ color: listBaseColor }} />
-                                                            <span style={{ color: listBaseColor, fontWeight: 500 }}>{list.owner}</span>
+                                                            <User className="h-2.5 w-2.5" style={{ color: accentColor }} />
+                                                            <span style={{ color: accentColor, fontWeight: 500 }}>{list.owner}</span>
                                                         </span>
                                                     </>
                                                 )}
