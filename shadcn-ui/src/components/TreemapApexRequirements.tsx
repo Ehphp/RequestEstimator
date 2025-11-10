@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import Chart from 'react-apexcharts';
 import { ApexOptions } from 'apexcharts';
 import { Requirement } from '../types';
+import { getPrioritySolidColor, getStateHexColor } from '@/lib/utils';
 
 type RequirementTreemapDatum = {
     x: string;
@@ -52,15 +53,15 @@ export function TreemapApexRequirements({
 
         const totalDays = reqsWithEstimates.reduce((sum, r) => sum + r.estimateDays, 0);
 
-        const data: RequirementTreemapDatum[] = reqsWithEstimates.map(({ requirement, estimateDays }) => {
-            const percentage = (estimateDays / totalDays) * 100;
+                const data: RequirementTreemapDatum[] = reqsWithEstimates.map(({ requirement, estimateDays }) => {
+                    const percentage = (estimateDays / totalDays) * 100;
 
-            return {
-                x: requirement.title,
-                y: Math.round(estimateDays * 10) / 10, // Round to 1 decimal
-                fillColor: colorBy === 'priority'
-                    ? getPriorityColor(requirement.priority)
-                    : getStateColor(requirement.state),
+                    return {
+                        x: requirement.title,
+                        y: Math.round(estimateDays * 10) / 10, // Round to 1 decimal
+                        fillColor: colorBy === 'priority'
+                            ? getPrioritySolidColor(requirement.priority)
+                            : getStateHexColor(requirement.state),
                 reqId: requirement.req_id,
                 priority: requirement.priority,
                 state: requirement.state,
@@ -174,31 +175,3 @@ export function TreemapApexRequirements({
     );
 }
 
-// Color mapping functions to match the site's color scheme
-function getPriorityColor(priority: string): string {
-    switch (priority) {
-        case 'High':
-            return '#ef4444'; // red-500
-        case 'Med':
-            return '#eab308'; // yellow-500
-        case 'Low':
-            return '#22c55e'; // green-500
-        default:
-            return '#3b82f6'; // blue-500
-    }
-}
-
-function getStateColor(state: string): string {
-    switch (state) {
-        case 'Proposed':
-            return '#3b82f6'; // blue-500
-        case 'Selected':
-            return '#a855f7'; // purple-500
-        case 'Scheduled':
-            return '#f97316'; // orange-500
-        case 'Done':
-            return '#16a34a'; // green-600
-        default:
-            return '#64748b'; // slate-500
-    }
-}

@@ -22,6 +22,7 @@ export interface List {
 export interface Requirement {
   req_id: string;
   list_id: string;
+  parent_req_id?: string | null;
   title: string;
   description: string;
   priority: 'High' | 'Med' | 'Low';

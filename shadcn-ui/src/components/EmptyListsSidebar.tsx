@@ -7,7 +7,7 @@ import { getTechnologyColor } from '../lib/technology-colors';
 
 interface EmptyListsSidebarProps {
     emptyLists: List[];
-    listStats: Record<string, { totalRequirements: number; totalDays: number }>;
+    listStats: Record<string, { totalRequirements: number; totalDays: number; criticalPathDays: number }>;
     onSelectList: (list: List) => void;
     onDeleteList: (list: List) => void;
 }
@@ -39,7 +39,7 @@ export function EmptyListsSidebar({
             {/* Empty Lists Cards */}
             <div className="max-h-[calc(100vh-300px)] space-y-2 overflow-y-auto pr-1.5">
                 {emptyLists.map((list) => {
-                    const stats = listStats[list.list_id] || { totalRequirements: 0, totalDays: 0 };
+                    const stats = listStats[list.list_id] || { totalRequirements: 0, totalDays: 0, criticalPathDays: 0 };
                     const technology = list.technology?.trim();
                     const technologyColor = technology ? getTechnologyColor(technology) : undefined;
                     const createdOn = list.created_on ? new Date(list.created_on).toLocaleDateString('it-IT') : null;

@@ -22,7 +22,8 @@ import {
     calculateNeutralProjection,
     calculatePriorityFirstProjection,
     calculateConfidenceScore,
-    calculateDeviationAlerts
+    calculateDeviationAlerts,
+    calculateRequirementCriticalPath
 } from '../lib/calculations';
 import { getPrioritySolidClass } from '@/lib/utils';
 import { RISK_THRESHOLDS } from '@/lib/constants';
@@ -151,32 +152,45 @@ export function DashboardView({ list, requirements, onBack, onSelectRequirement 
         });
     }, [reqsWithEstimates, filters]);
 
+    const criticalPathDays = useMemo(() => {
+        return calculateRequirementCriticalPath(filteredReqs);
+    }, [filteredReqs]);
+
     // Calcola KPI
     const kpis = useMemo(() => {
         return calculateDashboardKPIs(filteredReqs);
     }, [filteredReqs]);
 
+    const effectiveEffortDays = useMemo(() => {
+        return Math.max(kpis.totalDays, criticalPathDays * filters.nDevelopers);
+    }, [kpis.totalDays, criticalPathDays, filters.nDevelopers]);
+
     // Calcola proiezioni
     const projection = useMemo(() => {
         if (priorityPolicy === 'Neutral') {
             return calculateNeutralProjection(
-                kpis.totalDays,
+                effectiveEffortDays,
                 filters.nDevelopers,
                 filters.startDate,
                 filters.excludeWeekends,
                 filters.holidays
             );
         } else {
-            const result = calculatePriorityFirstProjection(
-                kpis.effortByPriority,
+            const scalingFactor = kpis.totalDays > 0 ? effectiveEffortDays / kpis.totalDays : 1;
+            const adjustedEffortByPriority = {
+                High: kpis.effortByPriority.High * scalingFactor,
+                Med: kpis.effortByPriority.Med * scalingFactor,
+                Low: kpis.effortByPriority.Low * scalingFactor
+            };
+            return calculatePriorityFirstProjection(
+                adjustedEffortByPriority,
                 filters.nDevelopers,
                 filters.startDate,
                 filters.excludeWeekends,
                 filters.holidays
             );
-            return result;
         }
-    }, [kpis, filters, priorityPolicy]);
+    }, [kpis, filters, priorityPolicy, effectiveEffortDays]);
 
     // Calcola Confidence Score
     const confidence = useMemo(() => {
@@ -185,8 +199,8 @@ export function DashboardView({ list, requirements, onBack, onSelectRequirement 
 
     // Calcola Deviation Alerts
     const alerts = useMemo(() => {
-        return calculateDeviationAlerts(kpis, projection.totalWorkdays, kpis.totalDays);
-    }, [kpis, projection]);
+        return calculateDeviationAlerts(kpis, projection.totalWorkdays, effectiveEffortDays);
+    }, [kpis, projection, effectiveEffortDays]);
 
     // Prepara dati per sparklines
     const sparklineData = useMemo(() => {
@@ -464,6 +478,10 @@ export function DashboardView({ list, requirements, onBack, onSelectRequirement 
                                         </div>
                                     </div>
                                     <div className="grid grid-cols-1 gap-1 text-xs border-t pt-2">
+                                        <div>
+                                            <div className="text-muted-foreground">Critical path</div>
+                                            <div className="font-bold">{criticalPathDays.toFixed(1)} gg sequenziali</div>
+                                        </div>
                                         <div className={`font-bold ${delta > 20 ? 'text-red-500' : delta < -20 ? 'text-blue-500' : 'text-green-500'}`}>
                                             Delta: {delta > 0 ? '+' : ''}{delta.toFixed(1)}%
                                         </div>

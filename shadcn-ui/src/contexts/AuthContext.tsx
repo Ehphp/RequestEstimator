@@ -40,6 +40,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
     const [user, setUser] = useState<User | null>(null);
     const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
     const [loading, setLoading] = useState<boolean>(true);
+    const allowFallbackAuth =
+        import.meta.env.DEV || import.meta.env.VITE_ALLOW_FALLBACK_AUTH === 'true';
 
     useEffect(() => {
         // Inizializza auth e ascolta cambiamenti
@@ -98,6 +100,14 @@ export function AuthProvider({ children }: AuthProviderProps) {
     };
 
     const setupFallbackAuth = () => {
+        if (!allowFallbackAuth) {
+            logger.warn(
+                'Supabase non configurato e fallback auth disabilitato. Imposta VITE_ALLOW_FALLBACK_AUTH=true per consentire il login locale.'
+            );
+            setIsAuthenticated(false);
+            setCurrentUserState(null);
+            return;
+        }
         // Fallback a localStorage per ambiente dev
         const savedUser = localStorage.getItem('current_user');
         if (savedUser) {

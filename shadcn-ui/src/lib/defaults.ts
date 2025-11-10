@@ -2,6 +2,7 @@ import { List, Requirement, Estimate, StickyDefaults, DefaultSource } from '../t
 import { presets, getCurrentQuarter, inferPriorityFromTitle, inferLabelsFromTitle, inferStakeholdersFromLabels, shouldIncludeOptionalActivities, inferRisksFromTitle } from '../data/presets';
 import { getStickyDefaults as getSupabaseStickyDefaults, saveStickyDefaults as saveSupabaseStickyDefaults } from './storage';
 import { logger } from './logger';
+import { parseLabels } from './utils';
 
 /**
  * DEFAULTS SYSTEM ARCHITECTURE
@@ -219,7 +220,7 @@ export async function getEstimateDefaults(
   }
 
   // Stakeholders - inferred from labels
-  const labels = requirement.labels ? requirement.labels.split(',').map(l => l.trim()) : [];
+  const labels = parseLabels(requirement.labels);
   const stakeholders = inferStakeholdersFromLabels(labels);
   const stakeholdersSource = labels.length > 0 ? 'Labels Analysis' : (preset ? `Preset: ${preset.name}` : 'Default');
 

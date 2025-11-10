@@ -1,23 +1,51 @@
 import { useMemo } from 'react';
 import Chart from 'react-apexcharts';
 import { ApexOptions } from 'apexcharts';
-import { List } from '../types';
+import { List, Requirement } from '../types';
 import { getTechnologyColor } from '../lib/technology-colors';
+import { getPrioritySolidColor, getStateHexColor } from '@/lib/utils';
 
 export const TECHNOLOGY_FALLBACK_LABEL = 'Tecnologia non dichiarata';
+
+const PRIORITY_LABELS: Record<Requirement['priority'], string> = {
+  High: 'Alta',
+  Med: 'Media',
+  Low: 'Bassa'
+};
+
+const STATE_LABELS: Record<Requirement['state'], string> = {
+  Proposed: 'Proposto',
+  Selected: 'Selezionato',
+  Scheduled: 'Pianificato',
+  Done: 'Completato'
+};
+
+type RequirementNode = {
+  reqId: string;
+  title: string;
+  totalDays: number;
+  priority: Requirement['priority'];
+  state: Requirement['state'];
+  businessOwner?: string;
+};
 
 type TreemapDatum = {
   x: string;
   y: number;
   fillColor: string;
+  kind: 'list' | 'requirement';
   listId: string;
-  requirements: number;
+  requirements?: number;
   days: number;
   percentage: number;
-  avgDaysPerReq: number;
-  status: List['status'];
+  avgDaysPerReq?: number;
+  status?: List['status'];
   businessOwner?: string;
-  technology: string;
+  technology?: string;
+  requirementId?: string;
+  priority?: Requirement['priority'];
+  state?: Requirement['state'];
+  criticalPathDays?: number;
 };
 
 type DataLabelFormatterOpts = {
@@ -33,8 +61,12 @@ type TooltipCustomParams = {
 
 interface TreemapApexProps {
   lists: List[];
-  listStats: Record<string, { totalRequirements: number; totalDays: number }>;
+  listStats: Record<string, { totalRequirements: number; totalDays: number; criticalPathDays: number }>;
+  listRequirementStats: Record<string, RequirementNode[]>;
+  mode: 'lists' | 'requirements';
+  focusedListId: string | null;
   onSelectList: (list: List) => void;
+  onRequirementSelect?: (listId: string, requirementId: string) => void;
   containerHeight: number;
   showLegend?: boolean;
 }
@@ -42,18 +74,166 @@ interface TreemapApexProps {
 export function TreemapApex({
   lists,
   listStats,
+  listRequirementStats,
+  mode,
+  focusedListId,
   onSelectList,
+  onRequirementSelect,
   containerHeight,
   showLegend = true
 }: TreemapApexProps) {
-  const { series, options, legendEntries } = useMemo(() => {
+  const { series, options, legendEntries, emptyMessage } = useMemo(() => {
+    if (mode === 'requirements') {
+      if (!focusedListId) {
+        return {
+          series: [],
+          options: {} as ApexOptions,
+          legendEntries: [],
+          emptyMessage: 'Seleziona una lista con requisiti stimati per approfondire'
+        };
+      }
+
+      const requirementNodes = listRequirementStats[focusedListId] ?? [];
+      if (requirementNodes.length === 0) {
+        return {
+          series: [],
+          options: {} as ApexOptions,
+          legendEntries: [],
+          emptyMessage: 'Nessun requisito con stima disponibile per questa lista'
+        };
+      }
+
+      const safeTotal = requirementNodes.reduce((sum, node) => sum + (node.totalDays > 0 ? node.totalDays : 0.1), 0);
+      const data: TreemapDatum[] = requirementNodes.map((node) => {
+        const safeValue = node.totalDays > 0 ? node.totalDays : 0.1;
+        return {
+          x: node.title,
+          y: safeValue,
+          fillColor: getPrioritySolidColor(node.priority),
+          kind: 'requirement',
+          listId: focusedListId,
+          days: node.totalDays,
+          percentage: safeValue / safeTotal * 100,
+          businessOwner: node.businessOwner,
+          requirementId: node.reqId,
+          priority: node.priority,
+          state: node.state
+        };
+      });
+
+      const series = [{ data }];
+
+      const MIN_LABEL_PERCENTAGE = 1.2;
+      const SINGLE_LINE_PERCENTAGE = 2.8;
+      const FULL_DETAILS_PERCENTAGE = 7;
+
+      const options: ApexOptions = {
+        chart: {
+          type: 'treemap',
+          height: containerHeight,
+          toolbar: { show: false },
+          animations: { enabled: true, speed: 400 },
+          events: {
+            dataPointSelection: (_event, _chartContext, config) => {
+              const selectedData = data[config.dataPointIndex];
+              if (selectedData?.kind === 'requirement' && selectedData.requirementId && onRequirementSelect) {
+                onRequirementSelect(selectedData.listId, selectedData.requirementId);
+              }
+            },
+            mounted: (chartContext) => {
+              const el = chartContext?.el as Element | null | undefined;
+              setTimeout(() => hideRotatedTreemapLabels(el), 0);
+            },
+            updated: (chartContext) => {
+              const el = chartContext?.el as Element | null | undefined;
+              setTimeout(() => hideRotatedTreemapLabels(el), 0);
+            }
+          }
+        },
+        legend: { show: false },
+        plotOptions: {
+          treemap: {
+            enableShades: false,
+            distributed: true,
+            dataLabels: { format: 'truncate' }
+          }
+        },
+        dataLabels: {
+          enabled: true,
+          style: { fontSize: '12px', fontWeight: 600, colors: ['#fff'] },
+          formatter: function dataLabelFormatter(text: string, opts: DataLabelFormatterOpts) {
+            const dataPoint = data[opts.dataPointIndex];
+            if (!dataPoint) {
+              return text;
+            }
+
+            if (dataPoint.percentage < MIN_LABEL_PERCENTAGE) {
+              return '';
+            }
+
+            const maxChars = dataPoint.percentage < FULL_DETAILS_PERCENTAGE ? 18 : 26;
+            const shortTitle = text.length > maxChars ? `${text.slice(0, maxChars - 1)}...` : text;
+
+            if (dataPoint.percentage < SINGLE_LINE_PERCENTAGE) {
+              return shortTitle;
+            }
+
+            if (dataPoint.percentage < FULL_DETAILS_PERCENTAGE) {
+              return `${shortTitle}\n${dataPoint.days.toFixed(1)} gg`;
+            }
+
+            const priorityLabel = dataPoint.priority ? PRIORITY_LABELS[dataPoint.priority] : '';
+            const stateLabel = dataPoint.state ? STATE_LABELS[dataPoint.state] : '';
+            return `${shortTitle}\n${dataPoint.days.toFixed(1)} gg · ${priorityLabel}\n${stateLabel}`;
+          }
+        },
+        colors: data.map((d) => d.fillColor),
+        tooltip: {
+          enabled: true,
+          theme: 'dark',
+          style: { fontSize: '13px', fontFamily: 'inherit' },
+          custom: function tooltipTemplate({ dataPointIndex }: TooltipCustomParams) {
+            const dataPoint = data[dataPointIndex];
+            const priorityLabel = dataPoint.priority ? PRIORITY_LABELS[dataPoint.priority] : 'n/d';
+            const stateLabel = dataPoint.state ? STATE_LABELS[dataPoint.state] : 'n/d';
+            const ownerInfo = dataPoint.businessOwner
+              ? `<div style="margin-top: 6px; font-size: 11px; color: rgba(255,255,255,0.85);">Owner: ${dataPoint.businessOwner}</div>`
+              : '';
+
+            return `
+              <div style="padding: 10px 12px; min-width: 200px;">
+                <div style="font-weight: 600; font-size: 14px; margin-bottom: 4px;">
+                  ${dataPoint.x}
+                </div>
+                <div style="font-size: 11px; color: rgba(255,255,255,0.8); margin-bottom: 6px; display:flex; align-items:center; gap:6px;">
+                  <span style="display:inline-flex;width:8px;height:8px;border-radius:999px;background:${dataPoint.priority ? getPrioritySolidColor(dataPoint.priority) : '#94a3b8'};"></span>
+                  <span>${priorityLabel} &middot; ${stateLabel}</span>
+                </div>
+                <div style="font-size: 12px; margin-bottom: 4px;">
+                  ${dataPoint.days.toFixed(1)} gg stimati
+                </div>
+                ${ownerInfo}
+              </div>
+            `;
+          }
+        }
+      };
+
+      const legendEntries = Array.from(new Set(requirementNodes.map((node) => node.priority))).map((priority) => ({
+        label: PRIORITY_LABELS[priority],
+        color: getPrioritySolidColor(priority)
+      }));
+
+      return { series, options, legendEntries, emptyMessage: undefined };
+    }
+
     const listsWithContent = lists.filter((list) => {
-      const stats = listStats[list.list_id] || { totalRequirements: 0, totalDays: 0 };
+      const stats = listStats[list.list_id] || { totalRequirements: 0, totalDays: 0, criticalPathDays: 0 };
       return stats.totalRequirements > 0 && stats.totalDays > 0;
     });
 
     if (listsWithContent.length === 0) {
-      return { series: [], options: {} as ApexOptions, legendEntries: [] as Array<{ label: string; color: string }> };
+      return { series: [], options: {} as ApexOptions, legendEntries: [] as Array<{ label: string; color: string }>, emptyMessage: 'Nessuna lista con requisiti stimati' };
     }
 
     const normalizedTechnologies = listsWithContent.map((list) => list.technology?.trim() || TECHNOLOGY_FALLBACK_LABEL);
@@ -74,6 +254,7 @@ export function TreemapApex({
         x: list.name,
         y: Math.round(stats.totalDays),
         fillColor: getTechnologyColor(technology),
+        kind: 'list',
         listId: list.list_id,
         requirements: stats.totalRequirements,
         days: stats.totalDays,
@@ -81,7 +262,8 @@ export function TreemapApex({
         avgDaysPerReq,
         status: list.status,
         businessOwner: list.default_business_owner || list.owner,
-        technology
+        technology,
+        criticalPathDays: stats.criticalPathDays
       };
     });
 
@@ -147,7 +329,7 @@ export function TreemapApex({
             return `${shortTitle}\n${dataPoint.days.toFixed(1)} gg`;
           }
 
-          return `${shortTitle}\n${dataPoint.days.toFixed(1)} gg | ${dataPoint.requirements} req\n${dataPoint.percentage.toFixed(1)}% | ${dataPoint.avgDaysPerReq.toFixed(1)} gg/req`;
+          return `${shortTitle}\n${dataPoint.days.toFixed(1)} gg | ${dataPoint.requirements} req\n${dataPoint.percentage.toFixed(1)}% | ${dataPoint.avgDaysPerReq?.toFixed(1)} gg/req`;
         }
       },
       colors: data.map((d) => d.fillColor),
@@ -163,7 +345,7 @@ export function TreemapApex({
             : '';
 
           return `
-            <div style="padding: 10px 12px; min-width: 180px;">
+            <div style="padding: 10px 12px; min-width: 200px;">
               <div style="font-weight: 600; font-size: 14px; margin-bottom: 4px;">
                 ${dataPoint.x}
               </div>
@@ -173,8 +355,11 @@ export function TreemapApex({
               <div style="font-size: 12px; margin-bottom: 4px;">
                 ${dataPoint.requirements} req &middot; ${dataPoint.days.toFixed(1)} gg tot
               </div>
+              <div style="font-size: 12px; margin-bottom: 4px;">
+                Critical path: ${(dataPoint.criticalPathDays ?? 0).toFixed(1)} gg
+              </div>
               <div style="font-size: 12px;">
-                ${dataPoint.avgDaysPerReq.toFixed(1)} gg/req &middot; ${dataPoint.percentage.toFixed(1)}%
+                ${dataPoint.avgDaysPerReq?.toFixed(1) ?? 'n/d'} gg/req &middot; ${dataPoint.percentage.toFixed(1)}%
               </div>
               ${ownerInfo}
             </div>
@@ -188,16 +373,25 @@ export function TreemapApex({
       color: getTechnologyColor(tech)
     }));
 
-    return { series, options, legendEntries };
-  }, [lists, listStats, onSelectList, containerHeight]);
+    return { series, options, legendEntries, emptyMessage: undefined };
+  }, [
+    containerHeight,
+    focusedListId,
+    listRequirementStats,
+    listStats,
+    lists,
+    mode,
+    onRequirementSelect,
+    onSelectList
+  ]);
 
   if (series.length === 0) {
     return (
-      <div className="flex items-center justify-center h-full text-muted-foreground">
-        Nessuna lista con requisiti stimati
+      <div className="flex items-center justify-center h-full px-6 text-center text-muted-foreground">
+        {emptyMessage ?? 'Nessun dato disponibile'}
       </div>
-  );
-}
+    );
+  }
 
 function hideRotatedTreemapLabels(chartEl?: Element | null): void {
   if (!chartEl) {

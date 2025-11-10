@@ -1,21 +1,25 @@
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
+import type { Requirement } from '../types';
 
 const PRIORITY_PALETTE = {
   High: {
-    chipClass: 'bg-[#3b1e26] text-[#fb7185] border-[#fb7185]/40',
-    solidClass: 'bg-[#fb7185] text-[#0b0f14]',
-    chartColor: '#fb7185',
+    chipClass: 'bg-[#31151a] text-[#ffb4a2] border-[#ffb4a2]/40',
+    solidClass: 'bg-[#b42318] text-white',
+    chartColor: '#b42318',
+    strokeColor: '#7f1d1d',
   },
   Med: {
-    chipClass: 'bg-[#3a2c16] text-[#fbbf24] border-[#fbbf24]/40',
-    solidClass: 'bg-[#fbbf24] text-[#0b0f14]',
-    chartColor: '#fbbf24',
+    chipClass: 'bg-[#35220c] text-[#ffe6a7] border-[#ffe6a7]/40',
+    solidClass: 'bg-[#c26d0e] text-white',
+    chartColor: '#c26d0e',
+    strokeColor: '#7a3f07',
   },
   Low: {
-    chipClass: 'bg-[#1b2a44] text-[#60a5fa] border-[#60a5fa]/40',
-    solidClass: 'bg-[#60a5fa] text-[#0b0f14]',
-    chartColor: '#60a5fa',
+    chipClass: 'bg-[#102335] text-[#9ad0ff] border-[#9ad0ff]/40',
+    solidClass: 'bg-[#1d4ed8] text-white',
+    chartColor: '#1d4ed8',
+    strokeColor: '#12357f',
   },
 } as const;
 
@@ -51,6 +55,17 @@ export function getStateColor(state: string): string {
   }
 }
 
+const STATE_HEX_COLORS: Record<Requirement['state'], string> = {
+  Proposed: '#3b82f6',
+  Selected: '#a855f7',
+  Scheduled: '#f97316',
+  Done: '#16a34a'
+};
+
+export function getStateHexColor(state: string): string {
+  return STATE_HEX_COLORS[state as Requirement['state']] ?? '#64748b';
+}
+
 /**
  * Restituisce il colore solido per priorità (per grafici e elementi accentati)
  * @param priority - Livello di priorità ('High' | 'Med' | 'Low')
@@ -65,4 +80,16 @@ export function getPrioritySolidColor(priority: string): string {
  */
 export function getPrioritySolidClass(priority: string): string {
   return PRIORITY_PALETTE[priority as keyof typeof PRIORITY_PALETTE]?.solidClass ?? 'bg-muted text-foreground';
+}
+
+export function getPriorityStrokeColor(priority: string): string {
+  return PRIORITY_PALETTE[priority as keyof typeof PRIORITY_PALETTE]?.strokeColor ?? '#374151';
+}
+
+export function parseLabels(raw?: string | null): string[] {
+  if (!raw) return [];
+  return raw
+    .split(',')
+    .map(label => label.trim())
+    .filter(label => label.length > 0);
 }

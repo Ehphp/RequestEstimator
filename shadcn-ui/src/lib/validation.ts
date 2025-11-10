@@ -13,7 +13,7 @@ export const VALID_STAKEHOLDERS = ['1 team', '2-3 team', '4+ team'] as const;
 
 export const VALID_PRIORITY = ['High', 'Med', 'Low'] as const;
 export const VALID_STATE = ['Proposed', 'Selected', 'Scheduled', 'Done'] as const;
-export const VALID_LIST_STATUS = ['Active', 'Archived'] as const;
+export const VALID_LIST_STATUS = ['Draft', 'Active', 'Archived'] as const;
 
 // Type guards
 export function isValidComplexity(value: string): value is Estimate['complexity'] {

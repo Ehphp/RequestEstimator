@@ -64,13 +64,18 @@ async function deleteEntityWithCascade({
 }
 
 // Lists Management
-export async function getLists(): Promise<List[]> {
+export async function getLists(statusFilter: List['status'][] = ['Active']): Promise<List[]> {
   return safeDbRead(async () => {
-    const { data, error } = await supabase
+    let query = supabase
       .from(TABLES.LISTS)
       .select('*')
-      .eq('status', 'Active')
       .order('created_on', { ascending: false });
+
+    if (statusFilter.length > 0) {
+      query = query.in('status', statusFilter);
+    }
+
+    const { data, error } = await query;
 
     if (error) {
       throw error;
@@ -148,13 +153,29 @@ export async function getRequirementsByListId(listId: string): Promise<Requireme
 }
 
 export async function saveRequirement(requirement: Requirement): Promise<void> {
-  const { error } = await supabase
+  // Enhanced logging to diagnose 42601 error
+  logger.info('Attempting to save requirement:', {
+    req_id: requirement.req_id,
+    list_id: requirement.list_id,
+    title: requirement.title
+  });
+
+  const { data, error } = await supabase
     .from(TABLES.REQUIREMENTS)
-    .upsert(requirement, { onConflict: 'req_id' });
+    .upsert(requirement, { onConflict: 'req_id' })
+    .select();
 
   if (error) {
+    logger.error('Supabase upsert error details:', {
+      code: error.code,
+      message: error.message,
+      details: error.details,
+      hint: error.hint
+    });
     throwDbError(error, 'Impossibile salvare il requisito');
   }
+
+  logger.info('Requirement saved successfully:', { req_id: requirement.req_id, data });
 }
 
 export async function deleteRequirement(reqId: string): Promise<void> {
@@ -261,6 +282,20 @@ export async function saveEstimate(estimate: Estimate): Promise<{ success: true 
 
   if (estimateError) {
     throwDbError(estimateError, 'Impossibile salvare la stima');
+  }
+
+  if (import.meta.env.VITE_REQUIRE_DB_TRIGGERS !== 'true') {
+    const { error: timestampError } = await supabase
+      .from(TABLES.REQUIREMENTS)
+      .update({ last_estimated_on: estimate.created_on })
+      .eq('req_id', estimate.req_id);
+
+    if (timestampError && !isNotFoundError(timestampError)) {
+      logger.warn('Aggiornamento last_estimated_on fallito', {
+        reqId: estimate.req_id,
+        error: timestampError
+      });
+    }
   }
 
   logCrud.create('Estimate', estimate.estimate_id);

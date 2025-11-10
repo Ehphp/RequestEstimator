@@ -6,6 +6,13 @@ import { PRIORITY_OPTIONS, STATE_OPTIONS } from '@/constants/requirements';
 import { Requirement } from '@/types';
 import { ReactNode, RefObject } from 'react';
 
+type ParentOption = {
+  value: string;
+  label: string;
+  depth?: number;
+  disabled?: boolean;
+};
+
 export type RequirementFormStateBase = {
   title: string;
   description: string;
@@ -14,6 +21,7 @@ export type RequirementFormStateBase = {
   priority: Requirement['priority'];
   state: Requirement['state'];
   estimator?: string;
+  parent_req_id?: string | null;
 };
 
 interface RequirementFormFieldsProps {
@@ -27,6 +35,10 @@ interface RequirementFormFieldsProps {
   descriptionPlaceholder?: string;
   labelsPlaceholder?: string;
   titleRef?: RefObject<HTMLInputElement>;
+  parentOptions?: ParentOption[];
+  parentLabel?: string;
+  parentPlaceholder?: string;
+  parentHelperText?: ReactNode;
 }
 
 export function RequirementFormFields({
@@ -39,7 +51,11 @@ export function RequirementFormFields({
   titlePlaceholder = 'Titolo del requisito',
   descriptionPlaceholder = 'Descrizione dettagliata del requisito',
   labelsPlaceholder = 'tag1,tag2,tag3',
-  titleRef
+  titleRef,
+  parentOptions = [],
+  parentLabel = 'Dipendenza',
+  parentPlaceholder = 'Nessun requisito padre',
+  parentHelperText
 }: RequirementFormFieldsProps) {
   const handleFieldChange = <K extends keyof RequirementFormStateBase>(field: K) => (value: RequirementFormStateBase[K]) => {
     onChange(field, value);
@@ -145,6 +161,45 @@ export function RequirementFormFields({
           </div>
         )}
       </div>
+
+      {parentOptions && (
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <Label htmlFor="parent_req_id">{parentLabel}</Label>
+            {parentHelperText}
+          </div>
+          <Select
+            value={formData.parent_req_id ?? '__none'}
+            onValueChange={(value) =>
+              handleFieldChange('parent_req_id')(value === '__none' ? null : value)
+            }
+          >
+            <SelectTrigger>
+              <SelectValue placeholder={parentPlaceholder} />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__none">{parentPlaceholder}</SelectItem>
+              {parentOptions.map((option) => (
+                <SelectItem
+                  key={option.value}
+                  value={option.value}
+                  disabled={option.disabled}
+                  style={{ paddingLeft: `${12 + (option.depth ?? 0) * 12}px` }}
+                >
+                  <div className="flex flex-col">
+                    <span className="text-sm font-medium">{option.label}</span>
+                    {option.depth && option.depth > 0 && (
+                      <span className="text-[10px] text-muted-foreground">
+                        Livello {option.depth}
+                      </span>
+                    )}
+                  </div>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
 
       <div>
         <div className="flex items-center justify-between mb-2">

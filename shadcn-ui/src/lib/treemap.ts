@@ -551,7 +551,7 @@ function validateLayout(nodes: TreemapNode[], width: number, height: number): vo
 
             if (overlapX && overlapY) {
                 overlapCount++;
-                console.error('❌ Overlap detected:',
+                logger.error('❌ Overlap detected:',
                     `[${a.id}] (${a.x.toFixed(0)},${a.y.toFixed(0)},${a.width.toFixed(0)}×${a.height.toFixed(0)})`,
                     `vs [${b.id}] (${b.x.toFixed(0)},${b.y.toFixed(0)},${b.width.toFixed(0)}×${b.height.toFixed(0)})`
                 );
@@ -568,7 +568,7 @@ function validateLayout(nodes: TreemapNode[], width: number, height: number): vo
     );
 
     if (outOfBounds.length > 0) {
-        console.error(`❌ ${outOfBounds.length} nodes out of bounds:`,
+        logger.error(`❌ ${outOfBounds.length} nodes out of bounds:`,
             outOfBounds.map(n => ({
                 id: n.id,
                 bounds: `${n.x.toFixed(0)},${n.y.toFixed(0)} ${n.width.toFixed(0)}×${n.height.toFixed(0)}`,

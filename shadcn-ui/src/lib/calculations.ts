@@ -1,6 +1,7 @@
 import { drivers, risks, contingencyBands } from '../data/catalog';
 import { Estimate, Activity, RequirementWithEstimate, DashboardKPI, Requirement } from '../types';
 import { getLatestEstimates } from './storage';
+import { parseLabels } from './utils';
 import {
   RISK_THRESHOLDS,
   CONTINGENCY_RATES,
@@ -9,6 +10,10 @@ import {
   PRECISION,
   CATALOG_VERSIONS
 } from './constants';
+import {
+  buildRequirementTree,
+  calculateCriticalPathLength
+} from './requirementsHierarchy';
 
 export function roundHalfUp(num: number, decimals: number = PRECISION.DAYS_DECIMALS): number {
   const factor = Math.pow(10, decimals);
@@ -151,7 +156,7 @@ export async function prepareRequirementsWithEstimates(requirements: Requirement
     const estimate = latestEstimates[req.req_id] || null;
     const estimationDays = estimate?.total_days || 0;
     const difficulty = estimate?.complexity ? mapComplexityToDifficulty(estimate.complexity) : 3;
-    const tags = req.labels ? req.labels.split(',').map(t => t.trim()) : [];
+    const tags = parseLabels(req.labels);
 
     return {
       requirement: req,
@@ -161,6 +166,25 @@ export async function prepareRequirementsWithEstimates(requirements: Requirement
       tags
     };
   });
+}
+
+/**
+ * Calculates the critical path (longest dependent chain) considering parent-child relationships.
+ * Each requirement contributes with its own estimation days, allowing parents and children to have independent effort.
+ */
+export function calculateRequirementCriticalPath(
+  requirements: RequirementWithEstimate[]
+): number {
+  if (requirements.length === 0) {
+    return 0;
+  }
+
+  const tree = buildRequirementTree<RequirementWithEstimate>(requirements, {
+    getId: (item) => item.requirement.req_id,
+    getParentId: (item) => item.requirement.parent_req_id ?? null
+  });
+
+  return calculateCriticalPathLength(tree, (item) => item.estimationDays || 0);
 }
 
 /**
