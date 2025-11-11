@@ -26,10 +26,10 @@ export function EmptyListsSidebar({
     if (emptyLists.length === 0 && nonEmptyLists.length === 0) return null;
 
     return (
-        <div className="w-64 shrink-0 flex flex-col space-y-4">
+        <div className="w-64 shrink-0 flex  space-y-4 py-6 flex-col space-y-4">
             {/* Header Liste Vuote */}
             {emptyLists.length > 0 && (
-                <div className="rounded-lg border-2 border-amber-300 bg-amber-50 p-2 dark:border-amber-700 dark:bg-amber-950/30 mb-4">
+                <div className="rounded-lg border-2 border-amber-300  bg-amber-50 p-2 dark:border-amber-700 dark:bg-amber-950/30 mb-4">
                     <div className="mb-1.5 flex items-center gap-2">
                         <AlertCircle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
                         <h3 className="text-xs font-semibold text-amber-900 dark:text-amber-100">Liste Vuote</h3>
@@ -45,7 +45,7 @@ export function EmptyListsSidebar({
 
             {/* Empty Lists Cards */}
             {emptyLists.length > 0 && (
-                <div className="flex-1 min-h-0 space-y-1.5 overflow-y-auto pr-1">
+                <div className="flex-1 min-h-0 max-h-[20vh] space-y-1.5 overflow-y-auto pr-1">
                     {emptyLists.map((list) => {
                         const stats = listStats[list.list_id] || { totalRequirements: 0, totalDays: 0, criticalPathDays: 0 };
                         const technology = list.technology?.trim();
