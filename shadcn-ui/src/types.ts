@@ -178,6 +178,9 @@ export interface ListActivityCatalog {
       group: string;
       activities: Activity[];
     }>;
+    // Optional per-list exclusions (activity codes or whole groups) stored with the catalog
+    excluded_activity_codes?: string[];
+    excluded_groups?: string[];
   };
   created_on?: string;
   updated_on?: string;

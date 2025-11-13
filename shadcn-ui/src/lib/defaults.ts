@@ -1,6 +1,6 @@
 import { List, Requirement, Estimate, StickyDefaults, DefaultSource } from '../types';
 import { presets, getCurrentQuarter, inferPriorityFromTitle, inferLabelsFromTitle, shouldIncludeOptionalActivities, inferRisksFromTitle } from '../data/presets';
-import { getStickyDefaults as getSupabaseStickyDefaults, saveStickyDefaults as saveSupabaseStickyDefaults } from './storage';
+import { getStickyDefaults as getSupabaseStickyDefaults, saveStickyDefaults as saveSupabaseStickyDefaults, getListActivityCatalog } from './storage';
 import { logger } from './logger';
 // ...existing code...
 
@@ -285,11 +285,29 @@ export async function getEstimateDefaults(
     activitiesSource = `Preset: ${preset.name}`;
   }
 
+  // Respect per-list catalog exclusions (if present): collect excluded codes now
+  // We can filter includedActivities immediately; optionalActivities is declared later
+  let _excludedActivityCodes: string[] = [];
+  try {
+    const listCatalog = await getListActivityCatalog(list.list_id, list.technology || null);
+    _excludedActivityCodes = listCatalog?.catalog?.excluded_activity_codes || [];
+    if (Array.isArray(_excludedActivityCodes) && _excludedActivityCodes.length > 0) {
+      includedActivities = includedActivities.filter(code => !_excludedActivityCodes.includes(code));
+    }
+  } catch (err) {
+    logger.debug('No per-list catalog exclusions applied', err);
+  }
+
   // Optional activities based on title patterns
   const includeOptional = shouldIncludeOptionalActivities(requirement.title);
   let optionalActivities: string[] = [];
   if (includeOptional) {
     optionalActivities = ['WF_HOOK']; // Workflow hook for state changes
+  }
+
+  // Apply per-list exclusions to optional activities as well (collected earlier)
+  if (Array.isArray(_excludedActivityCodes) && _excludedActivityCodes.length > 0) {
+    optionalActivities = optionalActivities.filter(code => !_excludedActivityCodes.includes(code));
   }
 
   // Risks - inferred from title

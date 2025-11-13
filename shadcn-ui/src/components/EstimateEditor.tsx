@@ -237,14 +237,12 @@ export function EstimateEditor({ requirement, list, onBack, selectedEstimate }: 
     }, {} as Record<string, Activity[]>);
 
     // merge persisted groups (from per-list catalog). Persisted activities override/augment canonical ones.
+    // Persisted groups should replace canonical groups when present.
+    // This allows per-list catalogs to fully override the default group contents
+    // instead of merging/duplicating canonical activities.
     persistedGroups.forEach(pg => {
       if (!pg || !pg.group) return;
-      if (!groups[pg.group]) groups[pg.group] = [];
-      pg.activities.forEach(act => {
-        if (!groups[pg.group].some(a => a.activity_code === act.activity_code)) {
-          groups[pg.group].push(act);
-        }
-      });
+      groups[pg.group] = Array.isArray(pg.activities) ? [...pg.activities] : [];
     });
 
     return groups;

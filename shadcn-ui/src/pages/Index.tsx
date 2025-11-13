@@ -31,6 +31,7 @@ import {
   getRequirementsByListId,
   generateId,
   saveList,
+  upsertListActivityCatalog,
   deleteList,
 } from '../lib/storage';
 import { logger } from '@/lib/logger';
@@ -149,6 +150,23 @@ export default function Index() {
   const [customGroups, setCustomGroups] = useState<Array<{ group: string; activities: Activity[] }>>([]);
   const [selectedActivityCodes, setSelectedActivityCodes] = useState<string[]>([]);
   const [saveCatalogOnCreate, setSaveCatalogOnCreate] = useState(false);
+  // Track per-list hidden groups/activities (soft-delete) during create/catalog customization
+  const [removedGroups, setRemovedGroups] = useState<string[]>([]);
+  const [removedActivityCodes, setRemovedActivityCodes] = useState<string[]>([]);
+
+  // Ensure that every time the CreateCatalogModal is opened we start from the
+  // canonical/default activities (clear any leftover temporary state from a
+  // previous create session). This avoids carrying over custom groups or
+  // hidden activities between separate create flows.
+  useEffect(() => {
+    if (showCatalogModal) {
+      setCustomGroups([]);
+      setSelectedActivityCodes([]);
+      setSaveCatalogOnCreate(false);
+      setRemovedGroups([]);
+      setRemovedActivityCodes([]);
+    }
+  }, [showCatalogModal]);
 
   const activitiesByGroup: Record<string, Activity[]> = useMemo(() => {
     const m: Record<string, Activity[]> = {};
@@ -587,6 +605,49 @@ export default function Index() {
         params.delete('reqId');
         params.delete('tab');
       });
+      // If user requested, persist the per-list activity catalog (custom groups + selected activities)
+      if (saveCatalogOnCreate) {
+        try {
+          // Build groups map starting from customGroups (preserve user-created groups)
+          const groupsMap = new Map<string, Activity[]>();
+          (customGroups || []).forEach((cg) => {
+            if (!groupsMap.has(cg.group)) groupsMap.set(cg.group, []);
+            (cg.activities || []).forEach((a) => {
+              const existing = groupsMap.get(cg.group)!;
+              if (!existing.some((x) => x.activity_code === a.activity_code)) existing.push(a);
+            });
+          });
+
+          // Add any selected standard activities (grouped by driver_group) from activitiesByGroup
+          const selectedSet = new Set(selectedActivityCodes || []);
+          Object.entries(activitiesByGroup).forEach(([groupName, items]) => {
+            items.forEach((act) => {
+              if (!selectedSet.has(act.activity_code)) return;
+              if (!groupsMap.has(groupName)) groupsMap.set(groupName, []);
+              const existing = groupsMap.get(groupName)!;
+              if (!existing.some((x) => x.activity_code === act.activity_code)) existing.push(act);
+            });
+          });
+
+          const groupsPayload = Array.from(groupsMap.entries()).map(([group, activities]) => ({ group, activities }));
+
+          const catalogPayload: any = { groups: groupsPayload };
+          if (removedActivityCodes && removedActivityCodes.length > 0) catalogPayload.excluded_activity_codes = removedActivityCodes;
+          if (removedGroups && removedGroups.length > 0) catalogPayload.excluded_groups = removedGroups;
+
+          if ((groupsPayload.length > 0) || (catalogPayload.excluded_activity_codes && catalogPayload.excluded_activity_codes.length > 0) || (catalogPayload.excluded_groups && catalogPayload.excluded_groups.length > 0)) {
+            await upsertListActivityCatalog(savedList.list_id, savedList.technology || null, catalogPayload, resolvedCurrentUser);
+            toast({ title: 'Catalogo salvato', description: 'Il catalogo attività è stato associato alla lista.' });
+          } else {
+            // No groups or exclusions to save
+            toast({ title: 'Nessun elemento da salvare', description: 'Non sono state selezionate attività o gruppi custom.' });
+          }
+        } catch (err) {
+          logger.error('Error saving list activity catalog:', err);
+          toast({ variant: 'destructive', title: 'Errore salvataggio catalogo', description: 'Impossibile salvare il catalogo attività per la lista.' });
+        }
+      }
+
       setShowCreateDialog(false);
       resetForm();
     } catch (err) {
@@ -713,7 +774,7 @@ export default function Index() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 via-gray-100 to-gray-200 dark:from-black dark:via-gray-900 dark:to-gray-950 flex items-center justify-center">
+      <div className="h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-black dark:to-gray-950 flex items-center justify-center p-3">
         <div className="flex items-center gap-3">
           <Loader2 className="h-8 w-8 animate-spin text-gray-600 dark:text-gray-400" />
           <p className="text-lg text-gray-600 dark:text-gray-400">Caricamento dati da Supabase...</p>
@@ -752,12 +813,12 @@ export default function Index() {
   }
 
   return (
-    <div className="h-screen max-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-black dark:to-gray-950 overflow-hidden flex flex-col p-2">
-      <div className="max-w-7xl mx-auto w-full h-full flex flex-col gap-1.5">
+    <div className="h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-black dark:to-gray-950 overflow-hidden flex flex-col p-3 min-h-0">
+      <div className="max-w-7xl mx-auto w-full h-full flex flex-col gap-2 min-h-0 flex-1">
         {/* Header Ultra-Compatto - singola riga */}
         <div className="flex items-center justify-between gap-3 bg-white dark:bg-gray-900 px-3 py-1.5 rounded-lg border shadow-sm shrink-0">
           <div className="flex items-center gap-3 flex-1 min-w-0">
-            <h1 className="text-sm font-bold truncate">Sistema Stima Requisiti</h1>
+            <h1 className="text-sm font-bold text-gray-900 dark:text-gray-50 truncate flex-1">Sistema Stima Requisiti</h1>
             <Badge variant="outline" className="text-[9px] h-4 px-1.5 bg-green-50 dark:bg-green-950/30 text-green-700 dark:text-green-400 border-green-200 dark:border-green-800 shrink-0">
               <span className="w-1.5 h-1.5 bg-green-500 rounded-full mr-1"></span>
               Supabase
@@ -1161,6 +1222,10 @@ export default function Index() {
                 setCustomGroups={setCustomGroups}
                 saveCatalogOnCreate={saveCatalogOnCreate}
                 setSaveCatalogOnCreate={setSaveCatalogOnCreate}
+                removedGroups={removedGroups}
+                setRemovedGroups={setRemovedGroups}
+                removedActivityCodes={removedActivityCodes}
+                setRemovedActivityCodes={setRemovedActivityCodes}
               />
             </form>
           </DialogContent>
@@ -1202,7 +1267,7 @@ export default function Index() {
             <div className="flex-1 min-h-0 flex flex-col">
               <div className="flex flex-wrap items-start justify-between gap-1.5 mb-1.5">
                 <div className="min-w-0">
-                  <p className="text-xs font-semibold truncate">Distribuzione effort liste e requisiti</p>
+                  <p className="text-xs font-semibold text-gray-900 dark:text-gray-50 truncate">Distribuzione effort liste e requisiti</p>
                   <p className="text-[9px] text-muted-foreground truncate hidden sm:block">
                     Clicca per aprire la lista o il requisito
                   </p>

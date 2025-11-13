@@ -35,7 +35,7 @@ const PRIORITY_BADGE: Record<Requirement["priority"], string> = {
 // Palette inspired by Tailwind/shadcn-ui theme colors for lists
 const LIST_COLOR_PALETTE = [
   "#2563eb", // blue-600 (primary)
-  "#0ea5e9", // sky-500 (accent)
+  "#48e90eff", // sky-500 (accent)
   "#f59e0b", // amber-500 (secondary)
   "#10b981", // emerald-500 (success/low)
   "#f43f5e", // rose-500 (destructive/high)
@@ -44,7 +44,7 @@ const LIST_COLOR_PALETTE = [
   "#8b5cf6", // violet-500
   "#14b8a6", // teal-500
   "#eab308", // yellow-500
-  "#6366f1", // indigo-500
+  "#f1e863ff", // indigo-500
   "#38bdf8", // sky-400
 ];
 
@@ -576,7 +576,8 @@ export function TreemapApexMultiSeries({
 
   return (
     <div
-      className={cn("rounded-lg border bg-background text-card-foreground shadow-sm my-4", className)}
+      className={cn("rounded-lg border bg-background text-card-foreground shadow-sm my-4", className, showLegend ? 'has-legend' : '')}
+      data-legend-count={legendEntries?.length ?? 0}
       style={{ borderColor: 'hsl(var(--card-border))' }}
     >
       {/* Header toolbar: compact title (optional) + palette buttons */}

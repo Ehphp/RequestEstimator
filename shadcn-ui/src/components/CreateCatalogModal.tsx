@@ -1,6 +1,6 @@
 import { useMemo, useState, useRef, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { LayoutGrid } from 'lucide-react';
+import { LayoutGrid, X, CheckSquare, Trash2 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -21,6 +21,11 @@ interface Props {
     setCustomGroups: (g: Array<{ group: string; activities: Activity[] }>) => void;
     saveCatalogOnCreate: boolean;
     setSaveCatalogOnCreate: (v: boolean) => void;
+    // optional controlled props: parent can provide these to persist hidden selections
+    removedGroups?: string[];
+    setRemovedGroups?: (g: string[]) => void;
+    removedActivityCodes?: string[];
+    setRemovedActivityCodes?: (c: string[]) => void;
 }
 
 export function CreateCatalogModal({
@@ -33,6 +38,11 @@ export function CreateCatalogModal({
     setCustomGroups,
     saveCatalogOnCreate,
     setSaveCatalogOnCreate
+    ,
+    removedGroups: removedGroupsProp,
+    setRemovedGroups: setRemovedGroupsProp,
+    removedActivityCodes: removedActivityCodesProp,
+    setRemovedActivityCodes: setRemovedActivityCodesProp
 }: Props) {
     const { toast } = useToast();
     const [searchTerm, setSearchTerm] = useState('');
@@ -41,6 +51,10 @@ export function CreateCatalogModal({
     const [newActivityDays, setNewActivityDays] = useState('');
     const [newActivityGroup, setNewActivityGroup] = useState('');
     const [highlightedActivityCode, setHighlightedActivityCode] = useState('');
+    // local soft-delete state: hidden groups and activities for this dialog/session
+    // parent may opt-in to control these through props; if so we synchronize both ways
+    const [removedGroups, setRemovedGroups] = useState<string[]>([]);
+    const [removedActivityCodes, setRemovedActivityCodes] = useState<string[]>([]);
     const newActivityNameRef = useRef<HTMLInputElement | null>(null);
     // focus the name input when the dialog opens for faster entry
     useEffect(() => {
@@ -58,29 +72,85 @@ export function CreateCatalogModal({
         }
     }, [highlightedActivityCode]);
 
+    // initialize local removed lists from parent props when provided
+    useEffect(() => {
+        if (Array.isArray(removedGroupsProp)) {
+            setRemovedGroups(removedGroupsProp);
+        }
+    }, [removedGroupsProp]);
+
+    useEffect(() => {
+        if (Array.isArray(removedActivityCodesProp)) {
+            setRemovedActivityCodes(removedActivityCodesProp);
+        }
+    }, [removedActivityCodesProp]);
+
+    // propagate local changes back to parent when the parent provided setters
+    // Do not propagate updates continuously (avoids update loops).
+    // Instead we sync back to parent when the user explicitly closes the modal.
+
+    function handleCloseAndSync() {
+        if (typeof setRemovedGroupsProp === 'function') {
+            setRemovedGroupsProp(removedGroups);
+        }
+        if (typeof setRemovedActivityCodesProp === 'function') {
+            setRemovedActivityCodesProp(removedActivityCodes);
+        }
+        onOpenChange(false);
+    }
+
     const allGroupNames = useMemo(() => {
         const names = new Set<string>([...Object.keys(activitiesByGroup || {}), ...customGroups.map(g => g.group)]);
+        // exclude removed groups from the selection list
+        removedGroups.forEach(r => names.delete(r));
         return Array.from(names);
-    }, [activitiesByGroup, customGroups]);
+    }, [activitiesByGroup, customGroups, removedGroups]);
 
     const filtered = useMemo(() => {
         const q = searchTerm.trim().toLowerCase();
-        if (!q) return activitiesByGroup;
+        if (!q) {
+            // build a shallow copy but exclude removed groups/activities
+            const outAll: Record<string, Activity[]> = {};
+            Object.entries(activitiesByGroup).forEach(([g, items]) => {
+                if (removedGroups.includes(g)) return;
+                const filteredItems = (items || []).filter(a => !removedActivityCodes.includes(a.activity_code));
+                if (filteredItems.length) outAll[g] = filteredItems;
+            });
+            // merge custom groups into the existing map (do not overwrite standard activities)
+            customGroups.forEach(g => {
+                if (removedGroups.includes(g.group)) return;
+                const filteredItems = (g.activities || []).filter(a => !removedActivityCodes.includes(a.activity_code));
+                if (!filteredItems.length) return;
+                const existing = outAll[g.group] || [];
+                const combined = [...existing, ...filteredItems].filter((v, i, arr) => arr.findIndex(x => x.activity_code === v.activity_code) === i);
+                outAll[g.group] = combined;
+            });
+            return outAll;
+        }
+
         const out: Record<string, Activity[]> = {};
         Object.entries(activitiesByGroup).forEach(([g, items]) => {
-            const f = items.filter(a => a.display_name.toLowerCase().includes(q) || a.activity_code.toLowerCase().includes(q));
+            if (removedGroups.includes(g)) return;
+            const f = items.filter(a => (a.display_name.toLowerCase().includes(q) || a.activity_code.toLowerCase().includes(q)) && !removedActivityCodes.includes(a.activity_code));
             if (f.length) out[g] = f;
         });
-        // include custom groups matching the search
+        // include custom groups matching the search (merge with existing group if present)
         customGroups.forEach(g => {
-            const f = (g.activities || []).filter(a => a.display_name.toLowerCase().includes(q) || a.activity_code.toLowerCase().includes(q));
-            if (f.length) out[g.group] = f;
+            if (removedGroups.includes(g.group)) return;
+            const f = (g.activities || []).filter(a => (a.display_name.toLowerCase().includes(q) || a.activity_code.toLowerCase().includes(q)) && !removedActivityCodes.includes(a.activity_code));
+            if (!f.length) return;
+            const existing = out[g.group] || [];
+            const combined = [...existing, ...f].filter((v, i, arr) => arr.findIndex(x => x.activity_code === v.activity_code) === i);
+            out[g.group] = combined;
         });
         return out;
-    }, [activitiesByGroup, searchTerm, customGroups]);
+    }, [activitiesByGroup, searchTerm, customGroups, removedGroups, removedActivityCodes]);
 
     function toggleSelectAllInGroup(group: string, select: boolean) {
-        const codes = (activitiesByGroup[group] || []).map(a => a.activity_code).concat((customGroups.find(g => g.group === group)?.activities || []).map(a => a.activity_code));
+        if (removedGroups.includes(group)) return;
+        const stdCodes = (activitiesByGroup[group] || []).map(a => a.activity_code).filter(c => !removedActivityCodes.includes(c));
+        const customCodes = (customGroups.find(g => g.group === group)?.activities || []).map(a => a.activity_code).filter(c => !removedActivityCodes.includes(c));
+        const codes = stdCodes.concat(customCodes);
         if (select) {
             const next = Array.from(new Set([...(selectedActivityCodes || []), ...codes]));
             setSelectedActivityCodes(next);
@@ -101,14 +171,15 @@ export function CreateCatalogModal({
     }
 
     function handleDeleteGroup(groupName: string) {
-        // remove group and any activities within it from customGroups
-        const remaining = (customGroups || []).filter(g => g.group !== groupName);
-        // also remove any selected activity codes that belonged to the deleted group
-        const removedCodes = (customGroups.find(g => g.group === groupName)?.activities || []).map(a => a.activity_code);
+        // Soft-hide the group in this dialog only; do NOT permanently delete from catalog or pass deletion to child requirements
+        if (!removedGroups.includes(groupName)) setRemovedGroups([...removedGroups, groupName]);
+        // gather all codes that were in this group (both std and custom)
+        const stdCodes = (activitiesByGroup[groupName] || []).map(a => a.activity_code);
+        const customCodes = (customGroups.find(g => g.group === groupName)?.activities || []).map(a => a.activity_code);
+        const removedCodes = stdCodes.concat(customCodes);
         const nextSelected = (selectedActivityCodes || []).filter(c => !removedCodes.includes(c));
-        setCustomGroups(remaining);
         setSelectedActivityCodes(nextSelected);
-        toast({ title: 'Gruppo rimosso' });
+        toast({ title: 'Gruppo nascosto' });
     }
 
     function handleAddActivity() {
@@ -119,42 +190,45 @@ export function CreateCatalogModal({
         // Require the user to explicitly select a group when adding an activity
         if (!newActivityGroup) { toast({ title: 'Seleziona un gruppo per l\'attività', variant: 'destructive' }); return; }
         const group = newActivityGroup;
-        // Do not implicitly create a new custom group when adding an activity.
-        // The user must click 'Crea gruppo' to create a new group first.
-        const isCustomGroup = (customGroups || []).some(g => g.group === group);
-        if (!isCustomGroup) { toast({ title: 'Crea prima il gruppo usando il bottone "Crea gruppo"', variant: 'destructive' }); return; }
+        // If the user selected a standard group (not present in customGroups),
+        // create a custom group automatically so the new activity is stored with custom groups
+        // and visible immediately in the dialog.
+
         const code = `CUST-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
         const activity: Activity = { activity_code: code, display_name: name, driver_group: group, base_days: days, helper_short: '', helper_long: '', status: 'Active' };
         {
             const copy = [...(customGroups || [])];
             const idx = copy.findIndex(x => x.group === group);
-            if (idx === -1) copy.push({ group, activities: [activity] });
-            else copy[idx].activities.push(activity);
+            if (idx === -1) {
+                // If the group isn't already a custom group, create it now so the new activity is visible
+                copy.push({ group, activities: [activity] });
+                toast({ title: `Gruppo '${group}' creato e attività aggiunta` });
+            } else {
+                // replace the group object with a new one containing the appended activity
+                const old = copy[idx];
+                const nextGroup = { ...old, activities: [...(old.activities || []), activity] };
+                copy[idx] = nextGroup;
+                toast({ title: 'Attività aggiunta' });
+            }
             setCustomGroups(copy);
         }
         setSelectedActivityCodes(Array.from(new Set([...(selectedActivityCodes || []), code])));
         setNewActivityName(''); setNewActivityDays('');
-        toast({ title: 'Attività aggiunta' });
         // highlight and scroll to the newly added activity
         setHighlightedActivityCode(code);
         setTimeout(() => setHighlightedActivityCode(''), 2200);
     }
 
-    function handleDeleteActivity(groupName: string, activityCode: string) {
-        const copy = [...(customGroups || [])];
-        const idx = copy.findIndex(x => x.group === groupName);
-        if (idx === -1) return;
-        copy[idx].activities = (copy[idx].activities || []).filter(a => a.activity_code !== activityCode);
-        // if group's activities are empty and the group wasn't originally present in activitiesByGroup, keep empty group (user may want it)
-        setCustomGroups(copy);
-        // clean selection
+    function handleDeleteActivity(activityCode: string) {
+        // Soft-hide the activity in this dialog only; don't remove permanently from the global catalog
+        if (!removedActivityCodes.includes(activityCode)) setRemovedActivityCodes([...removedActivityCodes, activityCode]);
         setSelectedActivityCodes((selectedActivityCodes || []).filter(c => c !== activityCode));
-        toast({ title: 'Attività rimossa' });
+        toast({ title: 'Attività nascosta' });
     }
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+            <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto p-3">
                 <DialogHeader>
                     <DialogTitle>Personalizza catalogo attività</DialogTitle>
                 </DialogHeader>
@@ -168,10 +242,10 @@ export function CreateCatalogModal({
                             </div>
                         </div>
                     </CardHeader>
-                    <CardContent className="overflow-y-auto px-2 pb-2">
+                    <CardContent className="overflow-y-auto px-3 pb-3 space-y-3">
                         <div>
                             <Input
-                                className="w-full text-sm"
+                                className="w-full h-9 text-sm"
                                 placeholder="Cerca attività..."
                                 value={searchTerm}
                                 onChange={(e) => setSearchTerm(e.target.value)}
@@ -180,33 +254,36 @@ export function CreateCatalogModal({
 
                         <div className="space-y-2 max-h-64 overflow-y-auto">
                             {Object.entries(filtered).map(([group, items]) => (
-                                <div key={group} className="border rounded px-2 py-2">
+                                <div key={group} className="border rounded-lg p-2 bg-accent/10">
                                     <div className="flex items-center justify-between">
                                         <div className="flex items-center gap-2">
-                                            <strong className="text-[11px]">{group}</strong>
-                                            <Badge variant="outline" className="text-[10px]">{items.length}</Badge>
+                                            <strong className="text-[11px] font-medium text-foreground">{group}</strong>
+                                            <Badge variant="outline" className="text-[9px] px-2 py-0 h-4">{items.length}</Badge>
                                         </div>
                                         <div className="flex items-center gap-2">
-                                            <Button type="button" size="sm" className="text-xs" onClick={() => toggleSelectAllInGroup(group, true)}>Seleziona tutto</Button>
-                                            {/* show delete group button only for custom groups */}
-                                            {customGroups.find(g => g.group === group) && (
-                                                <Button type="button" size="sm" variant="destructive" className="text-xs" onClick={() => handleDeleteGroup(group)}>Elimina gruppo</Button>
-                                            )}
+                                            <Button type="button" size="sm" variant="ghost" className="p-0 h-7 w-7" onClick={() => toggleSelectAllInGroup(group, true)} title={`Seleziona tutte le attività in ${group}`} aria-label={`Seleziona tutte le attività in ${group}`}>
+                                                <CheckSquare className="h-4 w-4 text-muted-foreground" />
+                                            </Button>
+                                            {/* allow hiding the group (soft-delete) for both standard and custom groups */}
+                                            <Button type="button" size="sm" variant={customGroups.find(g => g.group === group) ? 'destructive' : 'ghost'} className="p-0 h-7 w-7" onClick={() => handleDeleteGroup(group)} title={`Nascondi gruppo ${group}`} aria-label={`Nascondi gruppo ${group}`}>
+                                                <Trash2 className="h-4 w-4" />
+                                            </Button>
                                         </div>
                                     </div>
                                     <div className="mt-2 space-y-1">
                                         {items.map(a => (
-                                            <div key={a.activity_code} data-activity={a.activity_code} className={`${highlightedActivityCode === a.activity_code ? 'ring-2 ring-emerald-400/60 shadow-md scale-101' : 'bg-accent/10'} transition-all duration-300 ease-in-out transform flex items-center justify-between rounded px-2 py-1`}>
+                                            <div key={a.activity_code} data-activity={a.activity_code} className={`${highlightedActivityCode === a.activity_code ? 'ring-2 ring-emerald-400/60 shadow-md scale-101' : 'bg-accent/10'} transition-all duration-300 ease-in-out transform flex items-center justify-between rounded-lg px-2 py-1`}>
                                                 <div className="flex items-center gap-2 w-full">
                                                     <Checkbox checked={selectedActivityCodes.includes(a.activity_code)} onCheckedChange={(v) => {
                                                         setSelectedActivityCodes(v ? Array.from(new Set([...(selectedActivityCodes || []), a.activity_code])) : (selectedActivityCodes || []).filter(c => c !== a.activity_code));
                                                     }} />
-                                                    <Badge variant="secondary" className="text-[9px] px-1 py-0 h-5">{customGroups.find(g => g.activities.some(act => act.activity_code === a.activity_code)) ? 'Custom' : 'Std'}</Badge>
+                                                    <Badge variant="secondary" className="text-[9px] px-2 py-0 h-4">{customGroups.find(g => g.activities.some(act => act.activity_code === a.activity_code)) ? 'Custom' : 'Std'}</Badge>
                                                     <div className="text-[11px] font-medium">{a.display_name} <span className="text-xs text-muted-foreground">({a.base_days}d)</span></div>
                                                     <div className="ml-auto flex items-center gap-2">
-                                                        {customGroups.find(g => g.activities.some(act => act.activity_code === a.activity_code)) && (
-                                                            <Button type="button" size="sm" variant="ghost" className="text-red-600 text-xs" onClick={() => handleDeleteActivity(group, a.activity_code)}>✕</Button>
-                                                        )}
+                                                        {/* allow hiding any activity (soft-delete) for the list; this doesn't permanently remove it from global catalog */}
+                                                        <Button type="button" size="sm" variant="ghost" className="text-red-600 p-0 h-7 w-7" onClick={() => handleDeleteActivity(a.activity_code)} aria-label={`Nascondi ${a.display_name}`}>
+                                                            <X className="h-3.5 w-3.5" />
+                                                        </Button>
                                                     </div>
                                                 </div>
                                             </div>
@@ -219,7 +296,7 @@ export function CreateCatalogModal({
                         <div className="border-t pt-3">
                             <div className="grid sm:grid-cols-4 gap-2 items-end">
                                 <Input
-                                    className="w-full text-sm sm:col-span-3"
+                                    className="w-full h-9 text-sm sm:col-span-3"
                                     placeholder="Nome nuovo gruppo"
                                     value={newGroupName}
                                     onChange={(e) => setNewGroupName(e.target.value)}
@@ -227,7 +304,7 @@ export function CreateCatalogModal({
                                 <Button
                                     type="button"
                                     size="sm"
-                                    className="w-full sm:w-auto text-sm"
+                                    className="h-8 text-xs w-full sm:w-auto"
                                     onClick={handleCreateGroup}
                                 >
                                     Crea gruppo
@@ -239,7 +316,7 @@ export function CreateCatalogModal({
                                     <Input
                                         ref={newActivityNameRef}
                                         id="new-activity-name"
-                                        className="w-full text-sm"
+                                        className="w-full h-9 text-sm"
                                         placeholder="Nome attività"
                                         value={newActivityName}
                                         onChange={(e) => setNewActivityName(e.target.value)}
@@ -247,7 +324,7 @@ export function CreateCatalogModal({
                                     />
                                     <Input
                                         id="new-activity-days"
-                                        className="w-full text-sm"
+                                        className="w-full h-9 text-sm"
                                         placeholder="Giorni base"
                                         value={newActivityDays}
                                         onChange={(e) => setNewActivityDays(e.target.value)}
@@ -255,7 +332,7 @@ export function CreateCatalogModal({
                                         inputMode="numeric"
                                     />
                                     <Select value={newActivityGroup || ''} onValueChange={(v) => setNewActivityGroup(v)}>
-                                        <SelectTrigger className="w-full text-sm" aria-label="Seleziona gruppo attività">
+                                        <SelectTrigger className="w-full h-9 text-sm" aria-label="Seleziona gruppo attività">
                                             <SelectValue placeholder="Seleziona gruppo..." />
                                         </SelectTrigger>
                                         <SelectContent>
@@ -264,7 +341,7 @@ export function CreateCatalogModal({
                                             ))}
                                         </SelectContent>
                                     </Select>
-                                    <Button type="button" size="sm" className="w-full sm:w-auto text-sm" disabled={!newActivityName.trim() || (newActivityDays !== '' && Number(newActivityDays) < 0)} onClick={(e) => { e.stopPropagation(); handleAddActivity(); }}>
+                                    <Button type="button" size="sm" className="h-8 text-xs w-full sm:w-auto" disabled={!newActivityName.trim() || (newActivityDays !== '' && Number(newActivityDays) < 0)} onClick={(e) => { e.stopPropagation(); handleAddActivity(); }}>
                                         Aggiungi attività
                                     </Button>
                                 </div>
@@ -279,10 +356,10 @@ export function CreateCatalogModal({
                         <div className="flex items-center justify-between">
                             <label className="flex items-center gap-2">
                                 <Checkbox checked={saveCatalogOnCreate} onCheckedChange={(v) => setSaveCatalogOnCreate(Boolean(v))} />
-                                <span className="text-sm">Salva come catalogo per questa lista</span>
+                                <span className="text-sm text-foreground">Salva come catalogo per questa lista</span>
                             </label>
                             <div className="flex gap-2">
-                                <Button type="button" className="h-8 text-xs" onClick={() => onOpenChange(false)}>Chiudi</Button>
+                                <Button type="button" className="h-8 text-xs" onClick={handleCloseAndSync}>Chiudi</Button>
                             </div>
                         </div>
                     </CardContent>
