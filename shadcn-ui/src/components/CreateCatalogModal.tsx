@@ -1,7 +1,7 @@
 import { useMemo, useState, useRef, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { LayoutGrid, X, CheckSquare, Trash2 } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { X, CheckSquare, Trash2 } from 'lucide-react';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
@@ -45,6 +45,12 @@ export function CreateCatalogModal({
     setRemovedActivityCodes: setRemovedActivityCodesProp
 }: Props) {
     const { toast } = useToast();
+    // Debug flag - enable verbose console output to trace layout/scroll/focus issues
+    const DEBUG = true;
+    const activitiesScrollRef = useRef<HTMLDivElement | null>(null);
+    const searchInputRef = useRef<HTMLInputElement | null>(null);
+    const [showTopGradient, setShowTopGradient] = useState(false);
+    const [showBottomGradient, setShowBottomGradient] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
     const [newGroupName, setNewGroupName] = useState('');
     const [newActivityName, setNewActivityName] = useState('');
@@ -56,18 +62,44 @@ export function CreateCatalogModal({
     const [removedGroups, setRemovedGroups] = useState<string[]>([]);
     const [removedActivityCodes, setRemovedActivityCodes] = useState<string[]>([]);
     const newActivityNameRef = useRef<HTMLInputElement | null>(null);
-    // focus the name input when the dialog opens for faster entry
+    // focus the search input when the dialog opens and ensure scroll is at top
     useEffect(() => {
         if (open) {
-            setTimeout(() => newActivityNameRef.current?.focus(), 80);
+            if (DEBUG) console.debug('[CreateCatalogModal] open=true - scheduling focus+resetScroll');
+            // give layout a moment to stabilize, then focus top input and reset inner scroll
+            const id = setTimeout(() => {
+                try {
+                    searchInputRef.current?.focus();
+                    if (activitiesScrollRef.current) {
+                        activitiesScrollRef.current.scrollTop = 0;
+                        if (DEBUG) console.debug('[CreateCatalogModal] reset scrollTop -> 0');
+                    }
+                } catch (err) {
+                    if (DEBUG) console.error('[CreateCatalogModal] focus/reset failed', err);
+                }
+            }, 120);
+            return () => clearTimeout(id);
         }
+        if (DEBUG) console.debug('[CreateCatalogModal] open=false');
     }, [open]);
+
+    // Scroll indicator logic will be added after `filtered` is declared to avoid use-before-declaration errors.
 
     // scroll and focus newly added activity when highlightedActivityCode is set
     useEffect(() => {
         if (!highlightedActivityCode) return;
         const el = document.querySelector(`[data-activity="${highlightedActivityCode}"]`) as HTMLElement | null;
-        if (el) {
+        const container = activitiesScrollRef.current;
+        if (DEBUG) console.debug('[CreateCatalogModal] highlight changed ->', highlightedActivityCode, { elExists: !!el, containerExists: !!container });
+        if (el && container) {
+            // calculate relative position and perform smooth scroll only within container
+            const elRect = el.getBoundingClientRect();
+            const contRect = container.getBoundingClientRect();
+            const offset = elRect.top - contRect.top - (contRect.height / 2) + (elRect.height / 2);
+            if (DEBUG) console.debug('[CreateCatalogModal] scroll params', { elRect, contRect, offset });
+            container.scrollTo({ top: container.scrollTop + offset, behavior: 'smooth' });
+        } else if (el) {
+            // fallback to global scrollIntoView
             el.scrollIntoView({ behavior: 'smooth', block: 'center' });
         }
     }, [highlightedActivityCode]);
@@ -145,6 +177,34 @@ export function CreateCatalogModal({
         });
         return out;
     }, [activitiesByGroup, searchTerm, customGroups, removedGroups, removedActivityCodes]);
+
+    // Update top/bottom gradient visibility based on scroll position and content size.
+    // This effect runs after `filtered` is computed so we can observe the actual content.
+    useEffect(() => {
+        const el = activitiesScrollRef.current;
+        if (!el) {
+            setShowTopGradient(false);
+            setShowBottomGradient(false);
+            return;
+        }
+
+        const update = () => {
+            const { scrollTop, scrollHeight, clientHeight } = el;
+            setShowTopGradient(scrollTop > 4);
+            setShowBottomGradient(scrollTop + clientHeight < scrollHeight - 4);
+        };
+
+        update();
+
+        const ro = new ResizeObserver(() => update());
+        ro.observe(el);
+        el.addEventListener('scroll', update, { passive: true });
+
+        return () => {
+            el.removeEventListener('scroll', update);
+            ro.disconnect();
+        };
+    }, [filtered]);
 
     function toggleSelectAllInGroup(group: string, select: boolean) {
         if (removedGroups.includes(group)) return;
@@ -228,33 +288,101 @@ export function CreateCatalogModal({
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto p-3">
+            <DialogContent className="max-w-5xl w-[95vw] h-[95vh] p-3">
                 <DialogHeader>
                     <DialogTitle>Personalizza catalogo attività</DialogTitle>
                 </DialogHeader>
 
-                <Card className="flex flex-col overflow-hidden">
-                    <CardHeader className="pb-1.5 pt-2 px-3 shrink-0">
-                        <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                                <LayoutGrid className="h-4 w-4 text-muted-foreground" />
-                                <CardTitle className="text-xs font-semibold">Personalizza catalogo attività</CardTitle>
+                <Card className="flex flex-col h-full overflow-hidden">
+                    <CardContent className="px-3 pt-2 pb-3 space-y-3 flex flex-col h-full">
+                        {/* Scrollable main area: search, list of groups + add-group/form */}
+                        <div ref={activitiesScrollRef} className="relative flex-1 overflow-y-auto space-y-3 pb-4">
+                            <div>
+                                <Input
+                                    ref={searchInputRef}
+                                    className="w-full h-9 text-sm"
+                                    placeholder="Cerca attività..."
+                                    value={searchTerm}
+                                    onChange={(e) => setSearchTerm(e.target.value)}
+                                />
                             </div>
-                        </div>
-                    </CardHeader>
-                    <CardContent className="overflow-y-auto px-3 pb-3 space-y-3">
-                        <div>
-                            <Input
-                                className="w-full h-9 text-sm"
-                                placeholder="Cerca attività..."
-                                value={searchTerm}
-                                onChange={(e) => setSearchTerm(e.target.value)}
-                            />
-                        </div>
 
-                        <div className="space-y-2 max-h-64 overflow-y-auto">
+                            {/* Visual scroll indicators (top/bottom) - subtle gradients to hint scrollability */}
+                            <div
+                                aria-hidden
+                                className={`pointer-events-none absolute inset-x-0 top-0 h-6 bg-gradient-to-b from-white/70 to-transparent dark:from-black/70 transition-opacity duration-200 ${showTopGradient ? 'opacity-100' : 'opacity-0'}`}
+                            />
+                            <div
+                                aria-hidden
+                                className={`pointer-events-none absolute inset-x-0 bottom-0 h-6 bg-gradient-to-t from-white/70 to-transparent dark:from-black/70 transition-opacity duration-200 ${showBottomGradient ? 'opacity-100' : 'opacity-0'}`}
+                            />
+
+                            {/* Group and activity add/create UI: place the new-group + add-activity form right after search for quick access */}
+                            <div className="border-t pt-3">
+                                <div className="grid sm:grid-cols-4 gap-2 items-end">
+                                    <Input
+                                        className="w-full h-9 text-sm sm:col-span-3"
+                                        placeholder="Nome nuovo gruppo"
+                                        value={newGroupName}
+                                        onChange={(e) => setNewGroupName(e.target.value)}
+                                    />
+                                    <Button
+                                        type="button"
+                                        size="sm"
+                                        className="h-8 text-xs w-full sm:w-auto"
+                                        onClick={handleCreateGroup}
+                                    >
+                                        Crea gruppo
+                                    </Button>
+                                </div>
+
+                                <form onSubmit={(e) => { e.preventDefault(); e.stopPropagation(); handleAddActivity(); }} className="mt-4">
+                                    <div className="grid sm:grid-cols-4 gap-2 items-end">
+                                        <Input
+                                            ref={newActivityNameRef}
+                                            id="new-activity-name"
+                                            className="w-full h-9 text-sm"
+                                            placeholder="Nome attività"
+                                            value={newActivityName}
+                                            onChange={(e) => setNewActivityName(e.target.value)}
+                                            aria-label="Nome attività"
+                                        />
+                                        <Input
+                                            id="new-activity-days"
+                                            className="w-full h-9 text-sm"
+                                            placeholder="Giorni base"
+                                            value={newActivityDays}
+                                            onChange={(e) => setNewActivityDays(e.target.value)}
+                                            aria-label="Giorni base"
+                                            inputMode="numeric"
+                                        />
+                                        <Select value={newActivityGroup || ''} onValueChange={(v) => setNewActivityGroup(v)}>
+                                            <SelectTrigger className="w-full h-9 text-sm" aria-label="Seleziona gruppo attività">
+                                                <SelectValue placeholder="Seleziona gruppo..." />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {allGroupNames.map(g => (
+                                                    <SelectItem key={g} value={g}>{g}</SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                        <Button type="button" size="sm" className="h-8 text-xs w-full sm:w-auto" disabled={!newActivityName.trim() || (newActivityDays !== '' && Number(newActivityDays) < 0)} onClick={(e) => { e.stopPropagation(); handleAddActivity(); }}>
+                                            Aggiungi attività
+                                        </Button>
+                                    </div>
+                                    <div className="mt-2">
+                                        {newActivityDays !== '' && Number(newActivityDays) < 0 && (
+                                            <p className="text-xs text-red-600">Inserisci un valore di giorni valido (&gt;= 0)</p>
+                                        )}
+                                    </div>
+                                </form>
+                            </div>
+
+                            {/* subtle separator between the add form and the groups list */}
+                            <div aria-hidden className="my-3 border-b border-muted-foreground/10" />
+
                             {Object.entries(filtered).map(([group, items]) => (
-                                <div key={group} className="border rounded-lg p-2 bg-accent/10">
+                                <div key={group} className="border rounded-lg p-2 bg-accent/10 relative overflow-visible">
                                     <div className="flex items-center justify-between">
                                         <div className="flex items-center gap-2">
                                             <strong className="text-[11px] font-medium text-foreground">{group}</strong>
@@ -272,7 +400,12 @@ export function CreateCatalogModal({
                                     </div>
                                     <div className="mt-2 space-y-1">
                                         {items.map(a => (
-                                            <div key={a.activity_code} data-activity={a.activity_code} className={`${highlightedActivityCode === a.activity_code ? 'ring-2 ring-emerald-400/60 shadow-md scale-101' : 'bg-accent/10'} transition-all duration-300 ease-in-out transform flex items-center justify-between rounded-lg px-2 py-1`}>
+                                            <div
+                                                key={a.activity_code}
+                                                data-activity={a.activity_code}
+                                                style={highlightedActivityCode === a.activity_code ? { boxShadow: '0 6px 18px rgba(2,6,23,0.06), 0 0 0 3px rgba(16,185,129,0.16)' } : undefined}
+                                                className={`${highlightedActivityCode === a.activity_code ? 'scale-101' : 'bg-accent/10'} transition-all duration-300 ease-in-out transform flex items-center justify-between rounded-lg px-2 py-1`}
+                                            >
                                                 <div className="flex items-center gap-2 w-full">
                                                     <Checkbox checked={selectedActivityCodes.includes(a.activity_code)} onCheckedChange={(v) => {
                                                         setSelectedActivityCodes(v ? Array.from(new Set([...(selectedActivityCodes || []), a.activity_code])) : (selectedActivityCodes || []).filter(c => c !== a.activity_code));
@@ -291,69 +424,12 @@ export function CreateCatalogModal({
                                     </div>
                                 </div>
                             ))}
+
+
                         </div>
 
-                        <div className="border-t pt-3">
-                            <div className="grid sm:grid-cols-4 gap-2 items-end">
-                                <Input
-                                    className="w-full h-9 text-sm sm:col-span-3"
-                                    placeholder="Nome nuovo gruppo"
-                                    value={newGroupName}
-                                    onChange={(e) => setNewGroupName(e.target.value)}
-                                />
-                                <Button
-                                    type="button"
-                                    size="sm"
-                                    className="h-8 text-xs w-full sm:w-auto"
-                                    onClick={handleCreateGroup}
-                                >
-                                    Crea gruppo
-                                </Button>
-                            </div>
-
-                            <form onSubmit={(e) => { e.preventDefault(); e.stopPropagation(); handleAddActivity(); }} className="mt-4">
-                                <div className="grid sm:grid-cols-4 gap-2 items-end">
-                                    <Input
-                                        ref={newActivityNameRef}
-                                        id="new-activity-name"
-                                        className="w-full h-9 text-sm"
-                                        placeholder="Nome attività"
-                                        value={newActivityName}
-                                        onChange={(e) => setNewActivityName(e.target.value)}
-                                        aria-label="Nome attività"
-                                    />
-                                    <Input
-                                        id="new-activity-days"
-                                        className="w-full h-9 text-sm"
-                                        placeholder="Giorni base"
-                                        value={newActivityDays}
-                                        onChange={(e) => setNewActivityDays(e.target.value)}
-                                        aria-label="Giorni base"
-                                        inputMode="numeric"
-                                    />
-                                    <Select value={newActivityGroup || ''} onValueChange={(v) => setNewActivityGroup(v)}>
-                                        <SelectTrigger className="w-full h-9 text-sm" aria-label="Seleziona gruppo attività">
-                                            <SelectValue placeholder="Seleziona gruppo..." />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            {allGroupNames.map(g => (
-                                                <SelectItem key={g} value={g}>{g}</SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
-                                    <Button type="button" size="sm" className="h-8 text-xs w-full sm:w-auto" disabled={!newActivityName.trim() || (newActivityDays !== '' && Number(newActivityDays) < 0)} onClick={(e) => { e.stopPropagation(); handleAddActivity(); }}>
-                                        Aggiungi attività
-                                    </Button>
-                                </div>
-                                <div className="mt-2">
-                                    {newActivityDays !== '' && Number(newActivityDays) < 0 && (
-                                        <p className="text-xs text-red-600">Inserisci un valore di giorni valido (&gt;= 0)</p>
-                                    )}
-                                </div>
-                            </form>
-                        </div>
-
-                        <div className="flex items-center justify-between">
+                        {/* Footer: outside the scrollable area so it's always visible */}
+                        <div className="flex items-center justify-between bg-background/50 pt-2 sticky bottom-0 z-40">
                             <label className="flex items-center gap-2">
                                 <Checkbox checked={saveCatalogOnCreate} onCheckedChange={(v) => setSaveCatalogOnCreate(Boolean(v))} />
                                 <span className="text-sm text-foreground">Salva come catalogo per questa lista</span>
