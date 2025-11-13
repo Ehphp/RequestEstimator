@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { ArrowLeft, Save, Info, AlertCircle, Copy, Sparkles, RotateCcw } from 'lucide-react';
+import { ArrowLeft, Save, Info, AlertCircle, Copy, Sparkles, RotateCcw, Edit, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -12,7 +12,7 @@ import { useDefaultTracking } from '@/hooks/useDefaultTracking';
 import { Requirement, Estimate, Activity, List } from '../types';
 import { activities, risks } from '../data/catalog';
 import { calculateEstimate } from '../lib/calculations';
-import { saveEstimate, getEstimatesByReqId, getRequirementsByListId } from '../lib/storage';
+import { saveEstimate, getEstimatesByReqId, getRequirementsByListId, getListActivityCatalog, upsertListActivityCatalog } from '../lib/storage';
 import { getEstimateDefaults, updateStickyDefaults, resetToDefaults } from '../lib/defaults';
 import { validateEstimate } from '../lib/validation';
 import { getPriorityColor, getStateColor } from '@/lib/utils';
@@ -22,6 +22,7 @@ import { DefaultPill } from './DefaultPill';
 import { DriverSelect } from './DriverSelect';
 import { ThemeToggle } from './ThemeToggle';
 import { RequirementRelations } from './RequirementRelations';
+import { buildActivityMapFromCatalogs, mergeActivitiesWithOverrides } from '../lib/utils';
 
 interface EstimateEditorProps {
   requirement: Requirement;
@@ -52,7 +53,28 @@ export function EstimateEditor({ requirement, list, onBack, selectedEstimate }: 
   const [selectedRisks, setSelectedRisks] = useState<string[]>([]);
   const [includeOptional, setIncludeOptional] = useState(false);
   const [optionalActivities, setOptionalActivities] = useState<string[]>([]);
+  const [activityOverrides, setActivityOverrides] = useState<Record<string, { override_name?: string; override_days?: number; override_group?: string }>>({});
+  const [additionalGroups, setAdditionalGroups] = useState<string[]>([]);
+  const [persistedGroups, setPersistedGroups] = useState<Array<{ group: string; activities: Activity[] }>>([]);
   const [errors, setErrors] = useState<string[]>([]);
+
+  // Load per-list persisted activity catalog (groups + activities)
+  useEffect(() => {
+    (async () => {
+      try {
+        const catalog = await getListActivityCatalog(list.list_id, list.technology || null);
+        if (!catalog || !catalog.catalog) return;
+        const groups = catalog.catalog.groups || [];
+        // set persisted groups into state
+        setPersistedGroups(groups);
+        // also ensure group names show up in additionalGroups for UI
+        const names = groups.map(g => g.group).filter(Boolean);
+        setAdditionalGroups(prev => Array.from(new Set([...prev, ...names])));
+      } catch (e) {
+        logger.warn('Unable to load per-list activity catalog', e);
+      }
+    })();
+  }, [list.list_id, list.technology]);
   const [calculatedEstimate, setCalculatedEstimate] = useState<Partial<Estimate> | null>(null);
   const [previousEstimates, setPreviousEstimates] = useState<Estimate[]>([]);
   const [autoCalcReady, setAutoCalcReady] = useState(false);
@@ -124,6 +146,16 @@ export function EstimateEditor({ requirement, list, onBack, selectedEstimate }: 
         setSelectedRisks([...selectedEstimate.selected_risks]);
         setIncludeOptional(selectedEstimate.include_optional);
         setOptionalActivities(selectedEstimate.optional_activities || []);
+        // Load per-activity overrides if present
+        const overridesRecord: Record<string, { override_name?: string; override_days?: number; override_group?: string }> = {};
+        (selectedEstimate.included_activities_overrides || []).forEach(o => {
+          overridesRecord[o.activity_code] = {
+            override_name: o.override_name,
+            override_days: o.override_days,
+            override_group: o.override_group
+          };
+        });
+        setActivityOverrides(overridesRecord);
 
         setOverriddenFields({
           complexity: true,
@@ -153,6 +185,7 @@ export function EstimateEditor({ requirement, list, onBack, selectedEstimate }: 
         setSelectedRisks([]);
         setIncludeOptional(false);
         setOptionalActivities([]);
+        setActivityOverrides({});
         setDefaultSources([]);
         setOverriddenFields({});
 
@@ -175,6 +208,7 @@ export function EstimateEditor({ requirement, list, onBack, selectedEstimate }: 
         setSelectedRisks(defaults.selected_risks || []);
         setIncludeOptional(defaults.include_optional || false);
         setOptionalActivities(defaults.optional_activities || []);
+        setActivityOverrides({});
         setDefaultSources(sources);
       } catch (e) {
         logger.error('Failed to load defaults', e);
@@ -194,28 +228,137 @@ export function EstimateEditor({ requirement, list, onBack, selectedEstimate }: 
 
   // === MEMOS & DERIVED ===
   const groupedActivities = useMemo(() => {
-    return activities.reduce((groups, activity) => {
-      const group = activity.driver_group;
-      if (!groups[group]) groups[group] = [];
-      groups[group].push(activity);
-      return groups;
+    // base groups from canonical activities
+    const groups = activities.reduce((acc, activity) => {
+      const group = activity.driver_group || 'General';
+      if (!acc[group]) acc[group] = [];
+      acc[group].push(activity);
+      return acc;
     }, {} as Record<string, Activity[]>);
-  }, []); // activities è statico importato
+
+    // merge persisted groups (from per-list catalog). Persisted activities override/augment canonical ones.
+    persistedGroups.forEach(pg => {
+      if (!pg || !pg.group) return;
+      if (!groups[pg.group]) groups[pg.group] = [];
+      pg.activities.forEach(act => {
+        if (!groups[pg.group].some(a => a.activity_code === act.activity_code)) {
+          groups[pg.group].push(act);
+        }
+      });
+    });
+
+    return groups;
+  }, [activities, persistedGroups]); // activities è statico importato
 
   const lastGroupKey = useMemo(() => {
     const keys = Object.keys(groupedActivities);
     return keys.length ? keys[keys.length - 1] : undefined;
   }, [groupedActivities]);
 
+  // Combined catalog activities: canonical activities + persisted per-list activities
+  // Combined catalog activities: use utility to build a map from per-list catalog groups
+  const activityMap = useMemo(() => {
+    const listCatalog = (persistedGroups && persistedGroups.length > 0)
+      ? ({ catalog: { groups: persistedGroups } } as any)
+      : null;
+    return buildActivityMapFromCatalogs(listCatalog, activities);
+  }, [persistedGroups, activities]);
+
+  const combinedCatalogActivities = useMemo(() => Array.from(activityMap.values()), [activityMap]);
+
+  // Helper to build activity objects including synthetic custom activities
+  const buildSelectedActivityObjects = useMemo(() => {
+    const overridesArray = Object.entries(activityOverrides || {}).map(([activity_code, ov]) => ({
+      activity_code,
+      override_name: ov.override_name,
+      override_days: ov.override_days,
+      override_group: ov.override_group
+    }));
+
+    return mergeActivitiesWithOverrides(activityMap, selectedActivities, overridesArray);
+  }, [activityMap, selectedActivities, activityOverrides]);
+
+  // Replace previous simple filter with builder that supports custom activities
   const selectedActivityObjects = useMemo(
-    () => activities.filter(a => selectedActivities.includes(a.activity_code)),
-    [selectedActivities]
+    () => buildSelectedActivityObjects,
+    [buildSelectedActivityObjects]
   );
 
   const optionalActivityObjects = useMemo(
     () => activities.filter(a => optionalActivities.includes(a.activity_code)),
     [optionalActivities]
   );
+
+  // Synthetic (custom) activities selected by user: those not present in the combined catalog
+  const syntheticSelectedActivities = useMemo(() =>
+    selectedActivityObjects.filter(a => !combinedCatalogActivities.find(act => act.activity_code === a.activity_code)),
+    [selectedActivityObjects, combinedCatalogActivities]
+  );
+
+  // Build a merged activities list per group: catalog activities + any synthetic activities
+  const activitiesByGroup = useMemo(() => {
+    const map: Record<string, Activity[]> = {};
+    // start with catalog groups (copy arrays to avoid mutation)
+    Object.entries(groupedActivities).forEach(([g, arr]) => { map[g] = [...arr]; });
+    // attach synthetic activities into their declared group when present
+    syntheticSelectedActivities.forEach(s => {
+      const group = s.driver_group || lastGroupKey || 'Custom';
+      if (!map[group]) map[group] = [];
+      map[group].push(s);
+    });
+    // include any additionalGroups created by user (ensure they show up even if empty)
+    additionalGroups.forEach(g => { if (!map[g]) map[g] = []; });
+    return map;
+  }, [groupedActivities, syntheticSelectedActivities, lastGroupKey, additionalGroups]);
+
+  // Synthetic activities whose driver_group is not in the catalog groups (keep them in top area)
+  const topCustomSelectedActivities = useMemo(() =>
+    syntheticSelectedActivities.filter(s => !Object.prototype.hasOwnProperty.call(activitiesByGroup, s.driver_group)),
+    [syntheticSelectedActivities, activitiesByGroup]
+  );
+
+
+
+  const handleRemoveCustom = (code: string) => {
+    // Remove from selection and overrides immediately for responsive UI
+    setSelectedActivities(prev => prev.filter(c => c !== code));
+    setActivityOverrides(prev => {
+      const copy = { ...prev };
+      delete copy[code];
+      return copy;
+    });
+
+    // Also persist removal from per-list catalog if the activity exists there
+    (async () => {
+      try {
+        if (!persistedGroups || persistedGroups.length === 0) return;
+        // Remove the activity from any persisted group
+        const updated = persistedGroups.map(g => ({
+          group: g.group,
+          activities: (g.activities || []).filter(a => a.activity_code !== code)
+        }));
+
+        // Remove groups that became empty and are not present in the canonical groupedActivities
+        const cleaned = updated.filter(g => {
+          if ((g.activities || []).length > 0) return true;
+          // if group is present in canonical catalog, keep it (empty)
+          return Object.prototype.hasOwnProperty.call(groupedActivities, g.group);
+        });
+
+        // If nothing changed, skip persistence
+        const changed = JSON.stringify(cleaned) !== JSON.stringify(persistedGroups);
+        if (changed) {
+          await upsertListActivityCatalog(list.list_id, list.technology || null, { groups: cleaned });
+          setPersistedGroups(cleaned);
+          // ensure additionalGroups mirror persisted group names
+          const names = cleaned.map(g => g.group).filter(Boolean);
+          setAdditionalGroups(prev => Array.from(new Set([...prev.filter(n => Object.keys(groupedActivities).includes(n) ? false : true), ...names, ...prev])));
+        }
+      } catch (err) {
+        logger.warn('Failed to persist removal of custom activity', { code, err });
+      }
+    })();
+  };
 
   const combinedSelectedActivityObjects = useMemo(() => {
     if (!includeOptional || optionalActivityObjects.length === 0) return selectedActivityObjects;
@@ -225,10 +368,26 @@ export function EstimateEditor({ requirement, list, onBack, selectedEstimate }: 
     return [...selectedActivityObjects, ...optionalOnly];
   }, [includeOptional, optionalActivityObjects, selectedActivityObjects]);
 
+  // Apply user overrides (if any) to the selected activity objects. This creates
+  // a shallow copy of activities with overridden display_name/base_days/driver_group
+  // so downstream calculation functions can work unchanged.
+  const mappedSelectedActivityObjects = useMemo(() => {
+    return combinedSelectedActivityObjects.map(a => {
+      const ov = activityOverrides[a.activity_code];
+      return {
+        ...a,
+        display_name: ov?.override_name || a.display_name,
+        base_days: ov?.override_days ?? a.base_days,
+        driver_group: ov?.override_group || a.driver_group
+      } as Activity;
+    });
+  }, [combinedSelectedActivityObjects, activityOverrides]);
+
   const optionalActivitiesTotalDays = useMemo(
     () => optionalActivityObjects.reduce((sum, a) => sum + a.base_days, 0),
     [optionalActivityObjects]
   );
+
 
   const calculateAndUpdateEstimate = useCallback(() => {
     const validationErrors = validateEstimate(
@@ -236,7 +395,7 @@ export function EstimateEditor({ requirement, list, onBack, selectedEstimate }: 
       environments,
       reuse,
       stakeholders,
-      combinedSelectedActivityObjects
+      mappedSelectedActivityObjects
     );
 
     if (validationErrors.length > 0) {
@@ -249,7 +408,7 @@ export function EstimateEditor({ requirement, list, onBack, selectedEstimate }: 
 
     try {
       const estimate = calculateEstimate(
-        combinedSelectedActivityObjects,
+        mappedSelectedActivityObjects,
         complexity,
         environments,
         reuse,
@@ -347,7 +506,20 @@ export function EstimateEditor({ requirement, list, onBack, selectedEstimate }: 
       risks_default_source: overriddenFields.risks ? undefined : defaultSources.find(s => s.field === 'risks')?.source,
       risks_is_overridden: !!overriddenFields.risks,
       default_json: JSON.stringify(defaultSources),
-      ...calculatedEstimate
+      ...calculatedEstimate,
+      // persist per-activity overrides (only for activities included in this estimate)
+      included_activities_overrides: includedActivitiesForSave
+        .map(code => {
+          const ov = activityOverrides[code];
+          if (!ov) return undefined;
+          return {
+            activity_code: code,
+            override_name: ov.override_name,
+            override_days: ov.override_days,
+            override_group: ov.override_group
+          };
+        })
+        .filter(Boolean) as Estimate['included_activities_overrides']
     } as Estimate;
 
     logger.info(isUpdate ? 'Updating existing estimate' : 'Creating new estimate', {
@@ -395,6 +567,16 @@ export function EstimateEditor({ requirement, list, onBack, selectedEstimate }: 
     setSelectedRisks([...estimate.selected_risks]);
     setIncludeOptional(estimate.include_optional);
     setOptionalActivities(estimate.optional_activities || []);
+    // clone activity overrides too
+    const overridesRecord: Record<string, { override_name?: string; override_days?: number; override_group?: string }> = {};
+    (estimate.included_activities_overrides || []).forEach(o => {
+      overridesRecord[o.activity_code] = {
+        override_name: o.override_name,
+        override_days: o.override_days,
+        override_group: o.override_group
+      };
+    });
+    setActivityOverrides(overridesRecord);
     setCalculatedEstimate(null);
     setErrors([]);
 
@@ -468,6 +650,305 @@ export function EstimateEditor({ requirement, list, onBack, selectedEstimate }: 
       risks: risks.filter(r => r.category === cat)
     }));
   }, []);
+
+  // Inherit drivers from list if not set
+  useEffect(() => {
+    if (list) {
+      // Complessità: non esiste default a livello lista, sempre editabile
+      if (!reuse && list.default_reuse) setReuse(list.default_reuse);
+      if (!stakeholders && list.default_stakeholders) setStakeholders(list.default_stakeholders);
+      if (!environments && list.default_environments) setEnvironments(list.default_environments);
+    }
+  }, [list]);
+
+  // Small component to edit per-activity overrides (name, days, group).
+  function ActivityOverrideEditor({ activity }: { activity: Activity }) {
+    const ov = activityOverrides[activity.activity_code] || {};
+    const [open, setOpen] = useState(false);
+    const [name, setName] = useState<string>(ov.override_name || '');
+    const [days, setDays] = useState<string>(ov.override_days != null ? String(ov.override_days) : '');
+    const [group, setGroup] = useState<string>(ov.override_group || activity.driver_group);
+    const [newGroupName, setNewGroupName] = useState<string>('');
+
+    useEffect(() => {
+      const current = activityOverrides[activity.activity_code] || {};
+      setName(current.override_name || '');
+      setDays(current.override_days != null ? String(current.override_days) : '');
+      setGroup(current.override_group || activity.driver_group);
+    }, [activity.activity_code, activityOverrides]);
+
+    const handleSaveOverride = () => {
+      const parsed = days === '' ? undefined : Number(days);
+      const finalGroup = group === '__NEW__' ? newGroupName.trim() : (group === '__NONE__' ? '' : group);
+      if (finalGroup && !Object.keys(groupedActivities).includes(finalGroup) && !additionalGroups.includes(finalGroup)) {
+        setAdditionalGroups(prev => [...prev, finalGroup]);
+        // persist new group when user creates it while editing an activity
+        (async () => {
+          try {
+            const merged = (persistedGroups || []).slice();
+            if (!merged.some(m => m.group === finalGroup)) merged.push({ group: finalGroup, activities: [] });
+            await upsertListActivityCatalog(list.list_id, list.technology || null, { groups: merged });
+            setPersistedGroups(merged);
+          } catch (e) {
+            logger.warn('Failed to persist new group (override editor)', e);
+          }
+        })();
+      }
+      setActivityOverrides(prev => ({
+        ...prev,
+        [activity.activity_code]: {
+          override_name: name || undefined,
+          override_days: parsed,
+          override_group: finalGroup || undefined
+        }
+      }));
+      setOpen(false);
+    };
+
+    const daysInvalid = days !== '' && (isNaN(Number(days)) || Number(days) < 0);
+
+    const handleResetOverride = () => {
+      setActivityOverrides(prev => {
+        const copy = { ...prev };
+        delete copy[activity.activity_code];
+        return copy;
+      });
+      setOpen(false);
+    };
+
+    const [confirmOpen, setConfirmOpen] = useState(false);
+
+    const handleRemoveInDialog = () => {
+      // open internal confirmation dialog (consistent UI)
+      setConfirmOpen(true);
+    };
+
+    return (
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogTrigger asChild>
+          <Button
+            variant="ghost"
+            size="sm"
+            title={`Modifica ${activity.display_name}`}
+            aria-label={`Modifica ${activity.display_name}`}
+            className={`h-6 w-6 p-0 flex-shrink-0 ml-2 rounded transition-colors text-sm ${activityOverrides[activity.activity_code] ? 'bg-primary/10 text-primary border border-primary/20' : 'text-muted-foreground hover:bg-muted/10'}`}>
+            <Edit className="h-3.5 w-3.5" />
+          </Button>
+        </DialogTrigger>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Modifica attività</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <label className="text-[10px] block mb-1">Nome attività</label>
+              <input value={name} onChange={(e) => setName(e.target.value)} className="w-full border rounded px-2 py-1 text-sm" />
+            </div>
+            <div>
+              <label className="text-[10px] block mb-1">Giorni</label>
+              <input type="number" value={days} onChange={(e) => setDays(e.target.value)} className="w-full border rounded px-2 py-1 text-sm" />
+            </div>
+            <div>
+              <label className="text-[10px] block mb-1">Sezione</label>
+              <select value={group === '' ? '__NONE__' : (Object.keys(groupedActivities).concat(additionalGroups).includes(group) ? group : '__NEW__')} onChange={(e) => {
+                const v = e.target.value;
+                if (v === '__NEW__') {
+                  setGroup('__NEW__');
+                  setNewGroupName('');
+                } else {
+                  setGroup(v === '__NONE__' ? '' : v);
+                  setNewGroupName('');
+                }
+              }} className="w-full border rounded px-2 py-1 text-sm">
+                <option value="__NONE__">-- seleziona sezione --</option>
+                {Object.keys(groupedActivities).concat(additionalGroups).map(g => (
+                  <option key={g} value={g}>{g}</option>
+                ))}
+                <option value="__NEW__">Crea nuova sezione...</option>
+              </select>
+              {group === '__NEW__' && (
+                <div className="mt-2">
+                  <input value={newGroupName} onChange={(e) => setNewGroupName(e.target.value)} placeholder="Nome nuova sezione" className="w-full border rounded px-2 py-1 text-sm" />
+                </div>
+              )}
+              <p className="text-[10px] text-muted-foreground mt-1">Digita un nuovo nome per creare una nuova sezione.</p>
+            </div>
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <Button variant="destructive" onClick={handleRemoveInDialog} className="h-8 text-xs text-red-600 flex items-center gap-1">
+                <Trash2 className="h-3.5 w-3.5" />
+                Rimuovi
+              </Button>
+              <Button variant="ghost" onClick={handleResetOverride} className="h-8 text-xs">Reset</Button>
+              <Button onClick={handleSaveOverride} className="h-8 text-xs" disabled={daysInvalid || (group === '__NEW__' && newGroupName.trim().length === 0)}>Salva</Button>
+            </div>
+            {daysInvalid && <p className="text-[10px] text-red-600 mt-1">Giorni non valido (&gt;= 0)</p>}
+          </div>
+        </DialogContent>
+
+        {/* Internal confirmation dialog for removals (keeps UI consistent) */}
+        <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+          <DialogContent className="max-w-sm">
+            <DialogHeader>
+              <DialogTitle>Conferma rimozione</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-3">
+              <p className="text-sm">Sei sicuro di voler rimuovere l'attività <strong>{activity.display_name}</strong> dalla selezione?</p>
+              <div className="flex justify-end gap-2">
+                <Button variant="ghost" onClick={() => setConfirmOpen(false)} className="h-8 text-xs">Annulla</Button>
+                <Button variant="destructive" onClick={() => { handleRemoveCustom(activity.activity_code); setConfirmOpen(false); setOpen(false); }} className="h-8 text-xs">Rimuovi</Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+      </Dialog>
+    );
+  }
+
+  // Dialog to create a new custom activity (adds to selectedActivities and activityOverrides)
+  function AddActivityDialog() {
+    const [open, setOpen] = useState(false);
+    const [name, setName] = useState('');
+    const [days, setDays] = useState<string>('');
+    const [group, setGroup] = useState<string>(lastGroupKey || Object.keys(groupedActivities)[0] || 'General');
+    const [newGroupName, setNewGroupName] = useState<string>('');
+
+    const handleSave = () => {
+      if (!name || name.trim().length === 0) return;
+      const parsedDays = days === '' ? 0 : Number(days);
+      const code = `CUSTOM-${Date.now()}`;
+      const finalGroup = group === '__NEW__' ? newGroupName.trim() : (group === '__NONE__' ? '' : group);
+      // register new group if user typed one not present in catalog
+      if (finalGroup && !Object.keys(groupedActivities).includes(finalGroup) && !additionalGroups.includes(finalGroup)) {
+        setAdditionalGroups(prev => [...prev, finalGroup]);
+        // persist this new group into per-list catalog
+        (async () => {
+          try {
+            // Build catalog payload merging persisted group's activities and new empty group if needed
+            const merged = (persistedGroups || []).slice();
+            if (!merged.some(m => m.group === finalGroup)) {
+              merged.push({ group: finalGroup, activities: [] });
+            }
+            await upsertListActivityCatalog(list.list_id, list.technology || null, { groups: merged });
+            // reflect persistedGroups
+            setPersistedGroups(merged);
+          } catch (e) {
+            logger.warn('Failed to persist new group', e);
+          }
+        })();
+      }
+      setSelectedActivities(prev => [...prev, code]);
+      setActivityOverrides(prev => ({ ...prev, [code]: { override_name: name.trim(), override_days: parsedDays, override_group: finalGroup } }));
+      // persist the new custom activity into the per-list catalog group
+      (async () => {
+        try {
+          const merged = (persistedGroups || []).slice();
+          let target = merged.find(m => m.group === finalGroup);
+          if (!target) {
+            target = { group: finalGroup, activities: [] };
+            merged.push(target);
+          }
+          // create activity object matching Activity type
+          const newAct: Activity = {
+            activity_code: code,
+            display_name: name.trim(),
+            driver_group: finalGroup || (lastGroupKey || 'Custom'),
+            base_days: parsedDays,
+            helper_short: '',
+            helper_long: '',
+            status: 'Active'
+          };
+          // avoid duplicates
+          if (!target.activities.some(a => a.activity_code === code)) {
+            target.activities.push(newAct);
+          }
+          await upsertListActivityCatalog(list.list_id, list.technology || null, { groups: merged });
+          setPersistedGroups(merged);
+        } catch (e) {
+          logger.warn('Failed to persist custom activity', e);
+        }
+      })();
+      setOpen(false);
+    };
+
+    const reset = () => { setName(''); setDays(''); setGroup(lastGroupKey || Object.keys(groupedActivities)[0] || 'General'); };
+    const nameInvalid = !name || name.trim().length === 0;
+    const daysInvalid = days !== '' && (isNaN(Number(days)) || Number(days) < 0);
+
+    return (
+      <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) reset(); }}>
+        <DialogTrigger asChild>
+          <Button size="sm" variant="outline" className="h-7 text-[11px] px-2">+ Aggiungi</Button>
+        </DialogTrigger>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Nuova attività</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <label className="text-[10px] block mb-1">Nome attività</label>
+              <input value={name} onChange={(e) => setName(e.target.value)} className="w-full border rounded px-2 py-1 text-sm" />
+              {nameInvalid && <p className="text-[10px] text-red-600 mt-1">Nome attività obbligatorio</p>}
+            </div>
+            <div>
+              <label className="text-[10px] block mb-1">Giorni</label>
+              <input type="number" value={days} onChange={(e) => setDays(e.target.value)} className="w-full border rounded px-2 py-1 text-sm" />
+              {daysInvalid && <p className="text-[10px] text-red-600 mt-1">Inserisci un numero di giorni valido (&gt;= 0)</p>}
+            </div>
+            <div>
+              <label className="text-[10px] block mb-1">Sezione</label>
+              <select value={group === '' ? '__NONE__' : (Object.keys(groupedActivities).concat(additionalGroups).includes(group) ? group : '__NEW__')} onChange={(e) => {
+                const v = e.target.value;
+                if (v === '__NEW__') { setGroup('__NEW__'); setNewGroupName(''); }
+                else { setGroup(v === '__NONE__' ? '' : v); setNewGroupName(''); }
+              }} className="w-full border rounded px-2 py-1 text-sm">
+                <option value="__NONE__">-- seleziona sezione --</option>
+                {Object.keys(groupedActivities).concat(additionalGroups).map(g => (
+                  <option key={g} value={g}>{g}</option>
+                ))}
+                <option value="__NEW__">Crea nuova sezione...</option>
+              </select>
+              {group === '__NEW__' && (
+                <div className="mt-2">
+                  <input value={newGroupName} onChange={(e) => setNewGroupName(e.target.value)} placeholder="Nome nuova sezione" className="w-full border rounded px-2 py-1 text-sm" />
+                </div>
+              )}
+              <p className="text-[10px] text-muted-foreground mt-1">Digita un nuovo nome per creare una nuova sezione.</p>
+            </div>
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <Button variant="ghost" onClick={() => setOpen(false)} className="h-8 text-xs">Annulla</Button>
+              <Button onClick={handleSave} className="h-8 text-xs" disabled={nameInvalid || daysInvalid || (group === '__NEW__' && newGroupName.trim().length === 0)}>Aggiungi</Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    );
+  }
+
+  // Inline confirm remove dialog to keep removal UX consistent for custom activities
+  function ConfirmRemoveDialog({ name, onConfirm }: { name: string; onConfirm: () => void }) {
+    const [open, setOpen] = useState(false);
+    return (
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogTrigger asChild>
+          <Button variant="ghost" size="sm" className="h-6 w-6 p-0" aria-label={`Rimuovi ${name}`}>
+            <Trash2 className="h-3 w-3 text-red-600" />
+          </Button>
+        </DialogTrigger>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Conferma rimozione</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <p className="text-sm">Sei sicuro di voler rimuovere l'attività <strong>{name}</strong> dalla selezione?</p>
+            <div className="flex justify-end gap-2">
+              <Button variant="ghost" onClick={() => setOpen(false)} className="h-8 text-xs">Annulla</Button>
+              <Button variant="destructive" onClick={() => { onConfirm(); setOpen(false); }} className="h-8 text-xs">Rimuovi</Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    );
+  }
 
   return (
     <div className="h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-black dark:to-gray-950 overflow-hidden flex flex-col p-3">
@@ -568,6 +1049,7 @@ export function EstimateEditor({ requirement, list, onBack, selectedEstimate }: 
                 </div>
               </CardHeader>
               <CardContent className="space-y-3 px-3 pb-3">
+                {/* Complessità: sempre editabile a livello requisito */}
                 <DriverSelect
                   label="Complessità"
                   driverType="complexity"
@@ -577,16 +1059,42 @@ export function EstimateEditor({ requirement, list, onBack, selectedEstimate }: 
                   isOverridden={!!overriddenFields.complexity}
                   onToggleOverride={() => handleToggleOverride('complexity')}
                 />
-
-                <DriverSelect
-                  label="Riutilizzo"
-                  driverType="reuse"
-                  value={reuse}
-                  onChange={setReuse}
-                  defaultSource={getDefaultSource('reuse')?.source}
-                  isOverridden={!!overriddenFields.reuse}
-                  onToggleOverride={() => handleToggleOverride('reuse')}
-                />
+                {/* Riutilizzo: mostra select se non c'è default in lista */}
+                {(!list.default_reuse || overriddenFields.reuse) && (
+                  <DriverSelect
+                    label="Riutilizzo"
+                    driverType="reuse"
+                    value={reuse}
+                    onChange={setReuse}
+                    defaultSource={getDefaultSource('reuse')?.source}
+                    isOverridden={!!overriddenFields.reuse}
+                    onToggleOverride={() => handleToggleOverride('reuse')}
+                  />
+                )}
+                {/* Ambienti: mostra select se non c'è default in lista */}
+                {(!list.default_environments || overriddenFields.environments) && (
+                  <DriverSelect
+                    label="Ambienti"
+                    driverType="environments"
+                    value={environments}
+                    onChange={setEnvironments}
+                    defaultSource={getDefaultSource('environments')?.source}
+                    isOverridden={!!overriddenFields.environments}
+                    onToggleOverride={() => handleToggleOverride('environments')}
+                  />
+                )}
+                {/* Stakeholders: mostra select se non c'è default in lista */}
+                {(!list.default_stakeholders || overriddenFields.stakeholders) && (
+                  <DriverSelect
+                    label="Stakeholder"
+                    driverType="stakeholders"
+                    value={stakeholders}
+                    onChange={setStakeholders}
+                    defaultSource={getDefaultSource('stakeholders')?.source}
+                    isOverridden={!!overriddenFields.stakeholders}
+                    onToggleOverride={() => handleToggleOverride('stakeholders')}
+                  />
+                )}
               </CardContent>
             </Card>
 
@@ -724,22 +1232,43 @@ export function EstimateEditor({ requirement, list, onBack, selectedEstimate }: 
             <CardHeader className="pb-1.5 pt-2 px-3 shrink-0">
               <div className="flex items-center justify-between">
                 <CardTitle className="text-xs font-semibold">Attività</CardTitle>
-                {getDefaultSource('activities') && (
-                  <DefaultPill
-                    source={getDefaultSource('activities')!.source}
-                    isOverridden={!!overriddenFields.activities}
-                    onToggleOverride={() => handleToggleOverride('activities')}
-                  />
-                )}
+                <div className="flex items-center gap-2">
+                  <AddActivityDialog />
+                  {getDefaultSource('activities') && (
+                    <DefaultPill
+                      source={getDefaultSource('activities')!.source}
+                      isOverridden={!!overriddenFields.activities}
+                      onToggleOverride={() => handleToggleOverride('activities')}
+                    />
+                  )}
+                </div>
               </div>
             </CardHeader>
-            <CardContent className="overflow-y-auto flex-1 px-2 pb-2">
+            <CardContent className="overflow-y-auto  px-2 pb-2">
+              {/* Custom (user-created) activities whose group is not present in the catalog */}
+              {topCustomSelectedActivities.length > 0 && (
+                <div className="mb-2 space-y-1 px-1">
+                  {topCustomSelectedActivities.map((synthetic) => (
+                    <div key={synthetic.activity_code} className="flex items-center justify-between bg-accent/10 rounded px-2 py-1">
+                      <div className="flex items-center gap-2">
+                        <Badge variant="secondary" className="text-[9px] px-1 py-0 h-5">Custom</Badge>
+                        <div className="text-[11px] font-medium">{synthetic.display_name} ({synthetic.base_days}gg)</div>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <ActivityOverrideEditor activity={synthetic} />
+                        <ConfirmRemoveDialog name={synthetic.display_name} onConfirm={() => handleRemoveCustom(synthetic.activity_code)} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
               <Accordion
                 type="multiple"
                 defaultValue={lastGroupKey ? [lastGroupKey] : []}
                 className="w-full"
               >
-                {Object.entries(groupedActivities).map(([group, groupActivities]) => {
+                {Object.keys(activitiesByGroup).map((group) => {
+                  const groupActivities = activitiesByGroup[group] || [];
                   const selectedCount = groupActivities.filter(a => selectedActivities.includes(a.activity_code)).length;
                   const totalCount = groupActivities.length;
 
@@ -770,13 +1299,20 @@ export function EstimateEditor({ requirement, list, onBack, selectedEstimate }: 
                               className="mt-0.5 h-3.5 w-3.5"
                             />
                             <div className="flex-1 flex items-center gap-1 min-w-0">
-                              <label
-                                htmlFor={activity.activity_code}
-                                className="text-[10px] font-medium cursor-pointer flex-1 truncate leading-tight"
-                                title={activity.display_name}
-                              >
-                                {activity.display_name} ({activity.base_days}gg)
-                              </label>
+                              {(() => {
+                                const ov = activityOverrides[activity.activity_code];
+                                const labelName = ov?.override_name || activity.display_name;
+                                const labelDays = ov?.override_days != null ? ov.override_days : activity.base_days;
+                                return (
+                                  <label
+                                    htmlFor={activity.activity_code}
+                                    className="text-[10px] font-medium cursor-pointer flex-1 truncate leading-tight"
+                                    title={labelName}
+                                  >
+                                    {labelName} ({labelDays}gg)
+                                  </label>
+                                );
+                              })()}
                               <Dialog>
                                 <DialogTrigger asChild>
                                   <Button variant="ghost" size="sm" className="h-4 w-4 p-0 flex-shrink-0" aria-label={`Info ${activity.display_name}`}>
@@ -803,6 +1339,8 @@ export function EstimateEditor({ requirement, list, onBack, selectedEstimate }: 
                                   </div>
                                 </DialogContent>
                               </Dialog>
+                              {/* Edit override button */}
+                              <ActivityOverrideEditor activity={activity} />
                             </div>
                           </div>
                         ))}

@@ -51,6 +51,9 @@
 
     --card: var(--surface);
     --card-foreground: var(--text);
+   /* Derived border for cards: mix the surface color with the default border to get a subtle outline
+     Uses color-mix when available, falling back to the global --border token. */
+   --card-border: color-mix(in srgb, hsl(var(--card)) 85%, hsl(var(--border)) 15%);
 
     --popover: var(--elevated);
     --popover-foreground: var(--text);

@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import Chart from "react-apexcharts";
 import type { ApexOptions } from "apexcharts";
 import { toast } from "sonner";
@@ -31,28 +31,41 @@ const PRIORITY_BADGE: Record<Requirement["priority"], string> = {
   Low: "B",
 };
 
+
+// Palette inspired by Tailwind/shadcn-ui theme colors for lists
 const LIST_COLOR_PALETTE = [
-  "#2563EB", "#0EA5E9", "#0891B2", "#14B8A6", "#10B981", "#84CC16",
-  "#F59E0B", "#F97316", "#F43F5E", "#D946EF", "#8B5CF6", "#6366F1",
+  "#2563eb", // blue-600 (primary)
+  "#0ea5e9", // sky-500 (accent)
+  "#f59e0b", // amber-500 (secondary)
+  "#10b981", // emerald-500 (success/low)
+  "#f43f5e", // rose-500 (destructive/high)
+  "#a21caf", // purple-700 (card)
+  "#f97316", // orange-500
+  "#8b5cf6", // violet-500
+  "#14b8a6", // teal-500
+  "#eab308", // yellow-500
+  "#6366f1", // indigo-500
+  "#38bdf8", // sky-400
 ];
 
 const TREEMAP_PASTEL_BASE = "#f8fafc";
 const TREEMAP_PASTEL_WEIGHT = 0.25;
 
+// Priority colors matching Tailwind/shadcn-ui theme
 function getPrioritySolidColor(p: Requirement["priority"]) {
   switch (p) {
-    case "High": return "#ef4444";
-    case "Med": return "#f59e0b";
+    case "High": return "#ef4444"; // red-500 (destructive)
+    case "Med": return "#f59e0b"; // amber-500 (secondary)
     case "Low":
-    default: return "#10b981";
+    default: return "#10b981"; // emerald-500 (success)
   }
 }
 function getPriorityStrokeColor(p: Requirement["priority"]) {
   switch (p) {
-    case "High": return "#b91c1c";
-    case "Med": return "#b45309";
+    case "High": return "#b91c1c"; // red-700
+    case "Med": return "#b45309"; // amber-700
     case "Low":
-    default: return "#047857";
+    default: return "#047857"; // emerald-700
   }
 }
 
@@ -328,7 +341,7 @@ export function TreemapApexMultiSeries({
 
     const MIN_LABEL_PERCENTAGE = 0.5;
     const SINGLE_LINE_PERCENTAGE = 1.5;
-    const FULL_DETAILS_PERCENTAGE = 5.0;
+    const FULL_DETAILS_PERCENTAGE = 2.0;
 
     const options: ApexOptions = {
       chart: {
@@ -337,7 +350,7 @@ export function TreemapApexMultiSeries({
         toolbar: { show: false },
         animations: { enabled: true, speed: 400 },
         events: {
-          dataPointSelection: (_event, chartCtx, config) => {
+          dataPointSelection: (_event, _chartCtx, config) => {
             const { seriesIndex, dataPointIndex } = config;
             const now = Date.now();
             const isDoubleClick =
@@ -388,7 +401,7 @@ export function TreemapApexMultiSeries({
 
                 navigationTimeoutRef.current = setTimeout(() => {
                   if (!cancelled) {
-                    toast.dismiss(id as any);
+                    toast.dismiss(id);
                     onSelectList(list);
                   }
                 }, NAVIGATION_DELAY);
@@ -426,18 +439,18 @@ export function TreemapApexMultiSeries({
           enableShades: false,
           useFillColorAsStroke: false,
           borderRadius: 4,
-          dataLabels: { format: "truncate" as any },
+          dataLabels: { format: "truncate" },
         },
       },
       stroke: {
-        colors: ["hsla(20, 2%, 26%, 0.93)"],
+        colors: ["hsla(0, 0%, 50%, 0.93)"],
         width: 3,
         lineCap: "round",
       },
       dataLabels: {
         enabled: true,
-        style: { fontSize: "11px", fontWeight: 600, colors: ["rgba(15,23,42,0.92)"] },
-        dropShadow: { enabled: true, top: 1, left: 0, blur: 3, opacity: 0.35, color: "#f8fafc" },
+        style: { fontSize: "11px", fontWeight: 400, colors: ["rgba(247, 249, 255, 0.92)"] },
+        dropShadow: { enabled: true, top: 1, left: 0, blur: 3, opacity: 0.55, color: "#0c0c0cff" },
         formatter: function (text: string, opts) {
           const dataPoint = chartSeries[opts.seriesIndex]?.data[opts.dataPointIndex] as MultiSeriesDataPoint | undefined;
           if (!dataPoint) return text;
@@ -452,8 +465,6 @@ export function TreemapApexMultiSeries({
           if (dataPoint.percentage < SINGLE_LINE_PERCENTAGE) return titleWithBadge;
           if (dataPoint.percentage < FULL_DETAILS_PERCENTAGE) return `${titleWithBadge}\n${dataPoint.y.toFixed(1)} gg`;
 
-          const priorityLabel = PRIORITY_LABELS[dataPoint.priority];
-          const stateLabel = STATE_LABELS[dataPoint.state];
           return `${shortTitle}\n${dataPoint.y.toFixed(1)} gg `;
         },
       },
@@ -551,9 +562,10 @@ export function TreemapApexMultiSeries({
     return (
       <div
         className={cn(
-          "rounded-lg border bg-card text-card-foreground shadow-sm my-4 py-6",
+          "rounded-lg border bg-background text-card-foreground shadow-sm my-4 py-6",
           className,
         )}
+        style={{ borderColor: 'hsl(var(--card-border))' }}
       >
         <div className="flex items-center justify-center h-full px-6 text-center text-muted-foreground">
           {emptyMessage ?? "Nessun dato disponibile"}
@@ -563,33 +575,19 @@ export function TreemapApexMultiSeries({
   }
 
   return (
-    <div className={cn("rounded-lg border bg-card text-card-foreground shadow-sm my-4 py-2", className)}>
-      <div className="w-full h-full flex flex-col">
-        <div className="flex-1 min-h-0">
-          <Chart options={options} series={series as any} type="treemap" height={containerHeight} />
-        </div>
-        <div className="flex items-center justify-center gap-2 py-2 text-[10px] text-muted-foreground/70">
-          <span className="inline-flex items-center gap-1">
-            <span className="font-semibold">💡 Suggerimento:</span>
-            <span>Click = Dettaglio requisito</span>
-          </span>
-          <span className="opacity:50">•</span>
-          <span className="inline-flex items-center gap-1">
-            <span>Doppio click = Lista completa</span>
-            <span className="text-[9px] px-1.5 py-0.5 bg-blue-500/10 border border-blue-500/20 rounded text-blue-400">
-              (2s countdown)
-            </span>
-          </span>
-        </div>
-        <div className="text-center text-[10px] text-muted-foreground/70 px-4">
-          Riempimento pastello = Lista — Badge [A/M/B] = Priorità
-        </div>
-        <div className="flex flex-wrap items-center justify-center gap-2 py-1">
+    <div
+      className={cn("rounded-lg border bg-background text-card-foreground shadow-sm my-4", className)}
+      style={{ borderColor: 'hsl(var(--card-border))' }}
+    >
+      {/* Header toolbar: compact title (optional) + palette buttons */}
+      <div className="flex items-center justify-between px-3 pt-2">
+        <div className="text-sm font-semibold text-foreground/90">Treemap</div>
+        <div className="flex items-center gap-2">
           <Button
             type="button"
             variant={colorMode === "list" ? "secondary" : "ghost"}
             size="sm"
-            className="h-6 px-2 text-[10px]"
+            className="h-7 px-2 text-[11px]"
             onClick={() => setColorMode("list")}
           >
             Palette Liste
@@ -598,16 +596,26 @@ export function TreemapApexMultiSeries({
             type="button"
             variant={colorMode === "priority" ? "secondary" : "ghost"}
             size="sm"
-            className="h-6 px-2 text-[10px]"
+            className="h-7 px-2 text-[11px]"
             onClick={() => setColorMode("priority")}
           >
             Palette Priorità
           </Button>
         </div>
-        {showLegend && legendEntries.length > 0 && (
+      </div>
+
+      <div className="w-full flex flex-col px-3 pb-3">
+        <div className="min-h-0">
+          <Chart options={options} series={series} type="treemap" height={containerHeight} />
+        </div>
+
+        {/* compact spacer; legend (if needed) can be enabled here */}
+        <div className="mt-2" />
+
+        {/* {showLegend && legendEntries.length > 0 && (
           <div className="mt-4 px-1">
-            <div className="flex flex-col sm:flex-row gap-4 sm:gap-8 items-start sm:items-center justify-center">
-              <div className="flex flex-wrap items-center gap-2">
+            <div className="flex gap-4 sm:gap-8 items-start sm:items-center justify-center">
+              <div className="flex  items-center gap-2">
                 <span className="text-xs font-semibold text-foreground/90 mr-1">Liste:</span>
                 {legendEntries
                   .filter((e) => e.type === "list")
@@ -630,32 +638,11 @@ export function TreemapApexMultiSeries({
                     );
                   })}
               </div>
-              <div className="hidden sm:block h-8 w-px bg-border" />
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-xs font-semibold text-foreground/90 mr-1">Priorità (Requisiti):</span>
-                {legendEntries
-                  .filter((e) => e.type === "priority")
-                  .map((entry) => {
-                    const pr = entry as Extract<typeof entry, { type: "priority" }>;
-                    return (
-                      <div
-                        key={pr.label}
-                        className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-muted/30 hover:bg-muted/50 transition-colors"
-                      >
-                        <span
-                          className="h-4 w-4 rounded-sm shadow-sm border text-[9px] font-semibold text-white flex items-center justify-center"
-                          style={{ backgroundColor: pr.color, borderColor: pr.border }}
-                        >
-                          {pr.badge}
-                        </span>
-                        <span className="text-xs text-foreground/80">{pr.label}</span>
-                      </div>
-                    );
-                  })}
-              </div>
+
+
             </div>
           </div>
-        )}
+        )} */}
       </div>
     </div>
   );

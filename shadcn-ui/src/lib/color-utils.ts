@@ -76,23 +76,40 @@ export function ensureAccessibleCardColor(
     startWeight = 0.25,
     targetRatio = 4.5
 ): { bg: string; text: '#111111' | '#ffffff'; ratio: number; weight: number } {
-    let low = 0, high = 0.9, weight = startWeight;
+    // Use a small binary-search-like adjustment of the mix weight to reach the
+    // requested contrast ratio. Keep the returned shape identical to the
+    // previous implementation so consumers are unaffected.
+    const MAX_WEIGHT = 0.9;
+    const MAX_ITER = 10;
+    let minW = 0;
+    let maxW = MAX_WEIGHT;
+    // Clamp startWeight into a valid range
+    let weight = Math.min(Math.max(startWeight, 0), MAX_WEIGHT);
+
     let bg = mixHexColors(baseColor, pastelBase, weight);
     let { color: text, ratio } = getAccessibleTextColor(bg, targetRatio);
 
-    for (let i = 0; i < 10 && ratio < targetRatio; i++) {
+    if (ratio >= targetRatio) return { bg, text, ratio, weight };
+
+    for (let i = 0; i < MAX_ITER && ratio < targetRatio; i++) {
+        // If current text suggested is white, the background is relatively dark
+        // so reduce the pastel mix (move weight towards min) to darken the bg.
         if (text === '#ffffff') {
-            // background too dark? move weight towards base (reduce pastel mix) to darken bg
-            high = weight;
-            weight = (low + weight) / 2;       // scurisci
+            maxW = weight;
+            weight = (minW + weight) / 2;
         } else {
-            low = weight;
-            weight = (weight + high) / 2;      // schiarisci
+            // Otherwise background is light and we can increase the pastel mix
+            minW = weight;
+            weight = (weight + maxW) / 2;
         }
+
         bg = mixHexColors(baseColor, pastelBase, weight);
         const res = getAccessibleTextColor(bg, targetRatio);
         text = res.color;
         ratio = res.ratio;
+
+        if (ratio >= targetRatio) break;
     }
+
     return { bg, text, ratio, weight };
 }

@@ -54,7 +54,8 @@ export function EmptyListsSidebar({
                         return (
                             <Card
                                 key={list.list_id}
-                                className="cursor-pointer border border-amber-100 bg-white transition-all hover:border-amber-400 hover:shadow-lg dark:bg-gray-900"
+                                className="cursor-pointer border border-amber-200 bg-white transition-all hover:border-amber-400 hover:shadow-lg"
+                                style={{ backgroundColor: '#ffffff', color: '#111111' }}
                                 onClick={() => onSelectList(list)}
                             >
                                 <CardContent className="px-2 py-1.5">
@@ -96,7 +97,8 @@ export function EmptyListsSidebar({
                                                 event.stopPropagation();
                                                 onDeleteList(list);
                                             }}
-                                            className="h-6 w-6 shrink-0 text-muted-foreground hover:text-red-600"
+                                            className="h-6 w-6 shrink-0 hover:text-red-600"
+                                            style={{ color: '#111111' }}
                                         >
                                             <Trash2 className="h-3 w-3" />
                                         </Button>
@@ -150,11 +152,11 @@ export function EmptyListsSidebar({
                         return (
                             <Card
                                 key={list.list_id}
-                                className="cursor-pointer border transition-all hover:shadow-lg dark:bg-gray-900"
+                                className="cursor-pointer border transition-all hover:shadow-lg"
                                 style={{
                                     borderColor: listBaseColor,
-                                    backgroundColor: cardColor,
-                                    color: textColor
+                                    backgroundColor: '#ffffff',
+                                    color: '#111111'
                                 }}
                                 onClick={() => onSelectList(list)}
                             >
@@ -163,7 +165,7 @@ export function EmptyListsSidebar({
                                         <ListChecks className="mt-0.5 h-3.5 w-3.5 shrink-0" style={{ color: accentColor }} />
                                         <div className="min-w-0 flex-1 space-y-0.5">
                                             <div className="flex items-center gap-1.5">
-                                                <h4 className="truncate text-xs font-bold leading-tight" style={{ color: textColor }}>{list.name}</h4>
+                                                <h4 className="truncate text-xs font-bold leading-tight">{list.name}</h4>
                                                 {technology && (
                                                     <span
                                                         className="rounded-full border px-1.5 py-[1px] text-[9px] font-semibold"
@@ -181,8 +183,8 @@ export function EmptyListsSidebar({
                                                 <span style={{ color: accentColor, fontWeight: 600 }}>Req: {stats.totalRequirements}</span>
                                                 {list.owner && (
                                                     <>
-                                                        <span style={{ color: textColor, opacity: 0.5 }}>&middot;</span>
-                                                        <span className="flex items-center gap-0.5 truncate" style={{ color: textColor }}>
+                                                        <span style={{ color: '#111111', opacity: 0.5 }}>&middot;</span>
+                                                        <span className="flex items-center gap-0.5 truncate" style={{ color: '#111111' }}>
                                                             <User className="h-2.5 w-2.5" style={{ color: accentColor }} />
                                                             <span style={{ color: accentColor, fontWeight: 500 }}>{list.owner}</span>
                                                         </span>
@@ -198,7 +200,7 @@ export function EmptyListsSidebar({
                                                 onDeleteList(list);
                                             }}
                                             className="h-6 w-6 shrink-0 hover:text-red-600"
-                                            style={{ color: textColor }}
+                                            style={{ color: '#111111' }}
                                         >
                                             <Trash2 className="h-3 w-3" />
                                         </Button>

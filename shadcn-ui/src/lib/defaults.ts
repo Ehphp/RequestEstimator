@@ -220,45 +220,58 @@ export async function getEstimateDefaults(
   // Scenario (auto-generated, no longer from defaults)
   const scenario = 'Standard'; // Legacy fallback, actual scenario name generated in EstimateEditor
 
-  // Complexity - sticky first, then preset, then default
+  // Complexity - sticky > preset > list > default
   let complexity = 'Medium';
   let complexitySource = 'Default';
   if (sticky?.complexity) {
     complexity = sticky.complexity;
     complexitySource = 'Sticky/Estimator';
-  } else if (preset) {
+  } else if (preset && preset.complexity) {
     complexity = preset.complexity;
     complexitySource = `Preset: ${preset.name}`;
+  } else if (list.default_priority) {
+    // fallback: use list default_priority as complexity if possible (if types match)
+    complexity = list.default_priority as any;
+    complexitySource = 'List Default';
   }
 
-  // Environments - usa sempre il default della lista se presente, poi preset, poi default
+  // Environments - list > preset > default
   let environments = '2 env';
   let environmentsSource = 'Default';
   if (list.default_environments) {
     environments = list.default_environments;
     environmentsSource = 'List Default';
-  } else if (preset) {
+  } else if (preset && preset.environments) {
     environments = preset.environments;
     environmentsSource = `Preset: ${preset.name}`;
   }
 
-  // Reuse - inferred logic
+  // Reuse - sticky > preset > list > default
   let reuse = 'Medium';
   let reuseSource = 'Default';
-  if (preset) {
+  if (sticky?.reuse) {
+    reuse = sticky.reuse;
+    reuseSource = 'Sticky/Estimator';
+  } else if (preset && preset.reuse) {
     reuse = preset.reuse;
     reuseSource = `Preset: ${preset.name}`;
+  } else if (list.default_reuse) {
+    reuse = list.default_reuse as any;
+    reuseSource = 'List Default';
   }
 
-  // Stakeholders - usa sempre il default della lista se presente, poi preset, poi default
+  // Stakeholders - sticky > preset > list > default
   let stakeholders = '1 team';
   let stakeholdersSource = 'Default';
-  if (list.default_stakeholders) {
-    stakeholders = list.default_stakeholders;
-    stakeholdersSource = 'List Default';
-  } else if (preset) {
+  if (sticky?.stakeholders) {
+    stakeholders = sticky.stakeholders;
+    stakeholdersSource = 'Sticky/Estimator';
+  } else if (preset && preset.stakeholders) {
     stakeholders = preset.stakeholders;
     stakeholdersSource = `Preset: ${preset.name}`;
+  } else if (list.default_stakeholders) {
+    stakeholders = list.default_stakeholders;
+    stakeholdersSource = 'List Default';
   }
 
   // Activities - preset or sticky

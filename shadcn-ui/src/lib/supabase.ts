@@ -21,6 +21,7 @@ export const TABLES = {
   REQUIREMENTS: 'app_5939507989_requirements',
   ESTIMATES: 'app_5939507989_estimates',
   ACTIVITIES: 'app_5939507989_activities',
+  LIST_ACTIVITY_CATALOGS: 'app_5939507989_list_activity_catalogs',
   DRIVERS: 'app_5939507989_drivers',
   RISKS: 'app_5939507989_risks',
   CONTINGENCY_BANDS: 'app_5939507989_contingency_bands',

@@ -184,7 +184,10 @@ export function RequirementsList({
     period: baseList.period ?? '',
     technology: baseList.technology ?? '',
     status: baseList.status,
-    notes: baseList.notes ?? ''
+    notes: baseList.notes ?? '',
+    default_environments: baseList.default_environments ?? '',
+    default_stakeholders: baseList.default_stakeholders ?? 'none',
+    default_reuse: baseList.default_reuse ?? 'none'
   });
 
   const [isEditListDialogOpen, setIsEditListDialogOpen] = useState(false);
@@ -198,8 +201,14 @@ export function RequirementsList({
     setListFormData(createListFormState(list));
     setIsEditListDialogOpen(true);
   };
-  const updateListFormField = (field: keyof typeof listFormData, value: string) =>
-    setListFormData(prev => ({ ...prev, [field]: value }));
+  const updateListFormField = (field: keyof typeof listFormData, value: string) => {
+    // For special fields, map 'none' to null
+    if (field === 'default_stakeholders' || field === 'default_reuse') {
+      setListFormData(prev => ({ ...prev, [field]: value === 'none' ? null : value }));
+    } else {
+      setListFormData(prev => ({ ...prev, [field]: value }));
+    }
+  };
   const handleSubmitListUpdate = async (event: FormEvent) => {
     event.preventDefault();
     setListUpdating(true);
@@ -214,7 +223,10 @@ export function RequirementsList({
         period: trimmedPeriod || undefined,
         technology: trimmedTechnology || undefined,
         status: listFormData.status,
-        notes: trimmedNotes || undefined
+        notes: trimmedNotes || undefined,
+        default_environments: listFormData.default_environments || undefined,
+        default_stakeholders: listFormData.default_stakeholders === 'none' ? null : listFormData.default_stakeholders || undefined,
+        default_reuse: listFormData.default_reuse === 'none' ? null : listFormData.default_reuse || undefined
       };
       await saveList(updatedList);
       onListUpdated(updatedList);
@@ -1135,7 +1147,7 @@ export function RequirementsList({
             <Button variant="ghost" size="sm" onClick={onBack} className="h-7 w-7 p-0 shrink-0">
               <ArrowLeft className="h-4 w-4" />
             </Button>
-            <span className="text-xs text-muted-foreground shrink-0">Liste /</span>
+
             {isEditingListName ? (
               <input
                 ref={listNameInputRef}
@@ -1314,6 +1326,62 @@ export function RequirementsList({
                         </SelectContent>
                       </Select>
                     </div>
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium" htmlFor="list-default-environments-field">
+                        Default ambienti
+                      </label>
+                      <Select
+                        value={listFormData.default_environments}
+                        onValueChange={(value: string) => updateListFormField('default_environments', value)}
+                      >
+                        <SelectTrigger id="list-default-environments-field">
+                          <SelectValue placeholder="Seleziona ambienti" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="1 env">1 ambiente</SelectItem>
+                          <SelectItem value="2 env">2 ambienti</SelectItem>
+                          <SelectItem value="3 env">3 ambienti</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium" htmlFor="list-default-stakeholders-field">
+                        Default stakeholder
+                      </label>
+                      <Select
+                        value={listFormData.default_stakeholders ?? 'none'}
+                        onValueChange={(value: string) => updateListFormField('default_stakeholders', value)}
+                      >
+                        <SelectTrigger id="list-default-stakeholders-field">
+                          <SelectValue placeholder="Seleziona stakeholder" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">Nessuno</SelectItem>
+                          <SelectItem value="1 team">1 team</SelectItem>
+                          <SelectItem value="2-3 team">2-3 team</SelectItem>
+                          <SelectItem value="4+ team">4+ team</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium" htmlFor="list-default-reuse-field">
+                        Default riutilizzo
+                      </label>
+                      <Select
+                        value={listFormData.default_reuse ?? 'none'}
+                        onValueChange={(value: string) => updateListFormField('default_reuse', value)}
+                      >
+                        <SelectTrigger id="list-default-reuse-field">
+                          <SelectValue placeholder="Seleziona riutilizzo" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">Nessuno</SelectItem>
+                          <SelectItem value="High">Alto</SelectItem>
+                          <SelectItem value="Medium">Medio</SelectItem>
+                          <SelectItem value="Low">Basso</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-xs font-medium" htmlFor="list-notes-field">
@@ -1399,14 +1467,14 @@ export function RequirementsList({
                   </div>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-3 mb-4">
+                <div className="flex flex-nowrap items-center gap-3 mb-4 bg-white dark:bg-gray-900 border rounded-lg shadow-sm px-3 py-2 w-full overflow-x-auto scrollbar-thin">
                   <div className="relative flex-1 min-w-[220px]">
                     <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                     <Input
                       value={searchInput}
                       onChange={(event) => handleSearchChange(event.target.value)}
                       placeholder="Cerca per titolo, owner o etichetta"
-                      className="pl-9"
+                      className="pl-9 h-9 bg-transparent border-none shadow-none focus:ring-0 text-base"
                     />
                   </div>
 
@@ -1716,95 +1784,97 @@ export function RequirementsList({
                           role="button"
                           aria-label={`Apri requisito: ${requirement.title}`}
                         >
-                          <CardContent className="px-4 py-3">
-                            {/* Header principale */}
-                            <div className="flex items-center justify-between gap-3 mb-2">
-                              <div className="flex items-center gap-2 flex-1 min-w-0">
-                                {depth > 0 && (
-                                  <span className="text-[10px] uppercase tracking-wide text-muted-foreground shrink-0">
-                                    Liv.{depth}
-                                  </span>
-                                )}
-                                <span
-                                  className={`h-2.5 w-2.5 rounded-full shrink-0 ${requirement.priority === 'High'
-                                    ? 'bg-red-500'
-                                    : requirement.priority === 'Med'
-                                      ? 'bg-yellow-500'
-                                      : 'bg-green-500'
-                                    }`}
-                                />
-                                <h3 className="text-base font-semibold text-foreground truncate flex-1 min-w-0">
-                                  {requirement.title}
-                                </h3>
-                              </div>
-                              <div className="flex items-center gap-2 shrink-0">
-                                <div className="hidden md:block min-w-[200px]">
-                                  {renderEstimateHighlight(requirement, 'compact')}
-                                </div>
-                                {renderRequirementActions(requirement)}
-                              </div>
-                            </div>
-
-                            {/* Badge e metadati */}
-                            <div className="flex flex-wrap items-center gap-2 text-xs mb-2">
-                              <Badge className={`${prioritySolidBadge} text-white font-semibold px-2 py-0.5 border-0`}>
-                                {PRIORITY_LABEL[requirement.priority]}
-                              </Badge>
-                              <Badge className={`${stateSolidBadge} text-white font-semibold px-2 py-0.5 border-0`}>
-                                {STATE_LABEL[requirement.state]}
-                              </Badge>
-                              {childrenCount > 0 && (
-                                <Badge variant="outline" className="border-dashed">
-                                  Padre di {childrenCount}
-                                </Badge>
-                              )}
-                              {requirement.business_owner && (
-                                <div className="inline-flex items-center gap-1 rounded-full border bg-muted/40 px-2 py-0.5">
-                                  <User className="h-3 w-3" />
-                                  <span className="font-medium">{requirement.business_owner}</span>
-                                </div>
-                              )}
-                              <div className="inline-flex items-center gap-1 rounded-full border bg-muted/30 px-2 py-0.5">
-                                <Calendar className="h-3 w-3" />
-                                <span>{new Date(requirement.created_on).toLocaleDateString('it-IT')}</span>
-                              </div>
-                            </div>
-
-                            {/* Stima mobile */}
-                            <div className="md:hidden mb-2">
-                              {renderEstimateHighlight(requirement, 'default')}
-                            </div>
-
-                            {/* Dettagli espandibili al hover */}
-                            <div className="hidden group-hover:block group-focus-visible:block">
-                              {parentTitle && (
-                                <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-2">
-                                  <ArrowDownRight className="h-3.5 w-3.5" />
-                                  <span className="truncate">
-                                    Figlio di <span className="font-semibold text-foreground">{parentTitle}</span>
-                                  </span>
-                                </div>
-                              )}
-                              {requirement.description && (
-                                <p className="text-xs text-muted-foreground line-clamp-2 leading-relaxed mb-2">
-                                  {requirement.description}
-                                </p>
-                              )}
-                              {labels.length > 0 && (
-                                <div className="flex flex-wrap items-center gap-1.5">
-                                  <Tag className="h-3 w-3 text-muted-foreground" />
-                                  {labels.slice(0, 5).map((label, index) => (
-                                    <Badge key={index} variant="outline" className="text-xs">
-                                      {label}
-                                    </Badge>
-                                  ))}
-                                  {labels.length > 5 && (
-                                    <Badge variant="outline" className="text-xs">
-                                      +{labels.length - 5}
+                          <CardContent className="px-4 py-3 flex flex-row items-center gap-2 group">
+                            <div className="flex flex-col w-full">
+                              <div className="flex flex-row items-center gap-2 w-full">
+                                <div className="flex flex-row items-center gap-2 flex-1 min-w-0">
+                                  {/* Inline row: Badge, Stato, Titolo, Owner, Etichette */}
+                                  {depth > 0 && (
+                                    <span className="text-[10px] uppercase tracking-wide text-muted-foreground shrink-0 mr-1">
+                                      Liv.{depth}
+                                    </span>
+                                  )}
+                                  <Badge className={`${prioritySolidBadge} text-white font-semibold px-2 py-0.5 border-0`}>
+                                    {PRIORITY_LABEL[requirement.priority]}
+                                  </Badge>
+                                  <Badge className={`${stateSolidBadge} text-white font-semibold px-2 py-0.5 border-0`}>
+                                    {STATE_LABEL[requirement.state]}
+                                  </Badge>
+                                  {childrenCount > 0 && (
+                                    <Badge variant="outline" className="border-dashed">
+                                      Padre di {childrenCount}
                                     </Badge>
                                   )}
+                                  <h3 className="text-base font-semibold text-foreground truncate max-w-[220px] mx-2">
+                                    {requirement.title}
+                                  </h3>
+                                  {labels.length > 0 && (
+                                    <div className="flex flex-wrap items-center gap-1.5">
+                                      <Tag className="h-3 w-3 text-muted-foreground shrink-0" />
+                                      {labels.slice(0, 2).map((label, index) => (
+                                        <Badge key={index} variant="outline" className="text-[10px] px-1.5 py-0 capitalize">
+                                          {label}
+                                        </Badge>
+                                      ))}
+                                      {labels.length > 2 && (
+                                        <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-semibold">
+                                          +{labels.length - 2}
+                                        </Badge>
+                                      )}
+                                    </div>
+                                  )}
+                                  {requirement.business_owner && (
+                                    <div className="inline-flex items-center gap-1 rounded-full border bg-muted/40 px-1.5 py-0.5 mx-2 text-xs min-h-[22px]">
+                                      <User className="h-3 w-3" />
+                                      <span className="font-medium truncate max-w-[120px]">{requirement.business_owner}</span>
+                                    </div>
+                                  )}
                                 </div>
-                              )}
+                                {/* Right-aligned: estimate and date */}
+                                <div className="flex flex-row items-center gap-2 ml-auto">
+                                  <div className="min-w-[60px] mx-1">
+                                    {renderEstimateHighlight(requirement, 'compact')}
+                                  </div>
+                                  <div className="inline-flex items-center gap-1 rounded-full border bg-muted/30 px-1.5 py-0.5 text-xs min-h-[22px]">
+                                    <Calendar className="h-3 w-3" />
+                                    <span>{new Date(requirement.created_on).toLocaleDateString('it-IT')}</span>
+                                  </div>
+                                  <div className="shrink-0">{renderRequirementActions(requirement)}</div>
+                                </div>
+                              </div>
+                              {/* Description and parent only on hover, as a second line below the main row */}
+                              <div className="overflow-hidden transition-all duration-300 max-h-0 group-hover:max-h-96 group-focus-visible:max-h-96 w-full">
+                                <div className="pt-3 w-full">
+                                  {parentTitle && (
+                                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-2">
+                                      <ArrowDownRight className="h-3.5 w-3.5" />
+                                      <span className="truncate">
+                                        Figlio di <span className="font-semibold text-foreground">{parentTitle}</span>
+                                      </span>
+                                    </div>
+                                  )}
+                                  {requirement.description && (
+                                    <p className="text-xs text-muted-foreground leading-relaxed mb-2">
+                                      {requirement.description}
+                                    </p>
+                                  )}
+                                  {labels.length > 0 && (
+                                    <div className="flex flex-wrap items-center gap-1.5">
+                                      <Tag className="h-3 w-3 text-muted-foreground" />
+                                      {labels.slice(0, 5).map((label, index) => (
+                                        <Badge key={index} variant="outline" className="text-xs">
+                                          {label}
+                                        </Badge>
+                                      ))}
+                                      {labels.length > 5 && (
+                                        <Badge variant="outline" className="text-xs">
+                                          +{labels.length - 5}
+                                        </Badge>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
                             </div>
                           </CardContent>
                         </Card>

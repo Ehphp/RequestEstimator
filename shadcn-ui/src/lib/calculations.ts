@@ -31,14 +31,25 @@ export function calculateDriverMultiplier(
   const reuseDriver = drivers.find(d => d.driver === 'reuse' && d.option === reuse);
   const stakeholdersDriver = drivers.find(d => d.driver === 'stakeholders' && d.option === stakeholders);
 
-  if (!complexityDriver || !environmentsDriver || !reuseDriver || !stakeholdersDriver) {
-    throw new Error('Driver mancanti per il calcolo');
+
+  const missingDrivers = [];
+  if (!complexityDriver) missingDrivers.push('Complessità');
+  if (!environmentsDriver) missingDrivers.push('Ambienti');
+  if (!reuseDriver) missingDrivers.push('Riutilizzo');
+  if (!stakeholdersDriver) missingDrivers.push('Stakeholder');
+  if (missingDrivers.length > 0) {
+    throw new Error(
+      `Driver mancanti per il calcolo: ${missingDrivers.join(', ')}.\nValorizza tutti i campi richiesti per procedere.`
+    );
   }
 
-  return complexityDriver.multiplier *
-    environmentsDriver.multiplier *
-    reuseDriver.multiplier *
-    stakeholdersDriver.multiplier;
+  // TypeScript: ora sono sicuramente definiti
+  return (
+    (complexityDriver as typeof drivers[number]).multiplier *
+    (environmentsDriver as typeof drivers[number]).multiplier *
+    (reuseDriver as typeof drivers[number]).multiplier *
+    (stakeholdersDriver as typeof drivers[number]).multiplier
+  );
 }
 
 export function calculateRiskScore(selectedRiskIds: string[]): number {

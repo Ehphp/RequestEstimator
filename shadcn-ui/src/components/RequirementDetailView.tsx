@@ -119,9 +119,9 @@ export function RequirementDetailView({ requirement, list, onBack, onNavigateToR
     }
 
     return (
-        <div className="h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-black dark:to-gray-950 overflow-hidden flex flex-col p-3">
-            <div className="max-w-7xl mx-auto w-full h-full flex flex-col gap-2">
-                {/* Header Ultra-Compatto - singola riga */}
+        <div className="h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-black dark:to-gray-950 overflow-hidden flex flex-col p-3 min-h-0">
+            <div className="max-w-7xl mx-auto w-full h-full flex flex-col gap-2 min-h-0 flex-1">
+                {/* Header Ultra-Compatto - singola riga con Nuova Stima */}
                 <div className="flex items-center justify-between gap-3 bg-white dark:bg-gray-900 px-3 py-2 rounded-lg border shadow-sm shrink-0">
                     <div className="flex items-center gap-2 flex-1 min-w-0">
                         <Button variant="ghost" size="sm" onClick={onBack} className="h-7 w-7 p-0 shrink-0">
@@ -131,6 +131,10 @@ export function RequirementDetailView({ requirement, list, onBack, onNavigateToR
                         <h1 className="text-sm font-bold text-gray-900 dark:text-gray-50 truncate flex-1">{requirement.title}</h1>
                     </div>
                     <div className="flex items-center gap-1.5 shrink-0">
+                        <Button onClick={() => openEstimateEditor(null)} className="h-7 px-2 text-xs bg-primary text-white hover:bg-primary/90">
+                            <Edit className="h-3.5 w-3.5 mr-1.5" />
+                            Nuova Stima
+                        </Button>
                         <ThemeToggle />
                         <Badge className={`${getPriorityColor(requirement.priority)} text-xs px-2 py-0`}>
                             {priorityLabel}
@@ -148,294 +152,327 @@ export function RequirementDetailView({ requirement, list, onBack, onNavigateToR
                 </div>
 
                 {/* Layout a 3 colonne - 100% altezza disponibile */}
-                <div className="grid grid-cols-3 gap-2 flex-1 min-h-0">
+                <div className="grid grid-cols-3 gap-2  min-h-0 ">
                     {/* Colonna 1: Card Stima Corrente - Layout Compatto */}
-                    <div className="flex flex-col h-full min-h-0">
-                        {latestEstimate ? (
-                            <Card className="border-2 border-primary/20 bg-gradient-to-br from-primary/5 to-transparent shadow-md flex flex-col h-full overflow-hidden">
-                                <CardHeader className="pb-1.5 pt-2 px-3 shrink-0">
-                                    <div className="flex items-center justify-between">
-                                        <CardTitle className="text-xs font-semibold flex items-center gap-1.5">
-                                            <TrendingUp className="h-3.5 w-3.5 text-primary" />
-                                            Stima Corrente
-                                        </CardTitle>
-                                        <Button size="sm" onClick={() => openEstimateEditor(latestEstimate)} className="h-6 text-xs px-2">
-                                            <Edit className="h-3 w-3 mr-1" />
-                                            Modifica
-                                        </Button>
-                                    </div>
-                                </CardHeader>
-                                <CardContent className="flex-1 px-3 pb-3 overflow-auto space-y-2">
-                                    {/* Totale Giorni Super Prominente */}
-                                    <div className="text-center py-1 bg-gradient-to-br from-primary/10 to-transparent rounded-lg">
-                                        <p className="text-[10px] text-muted-foreground mb-0.5">Totale Giorni</p>
-                                        <p className="text-3xl font-bold text-primary leading-none">{latestEstimate.total_days}</p>
-                                    </div>
-
-                                    {/* Mini Radial Chart: Distribuzione Compatta */}
-                                    <div className="bg-accent/30 rounded-lg p-2">
-                                        <p className="text-[10px] font-medium mb-1 text-center">Distribuzione</p>
-                                        <ReactApexChart
-                                            type="radialBar"
-                                            height={140}
-                                            series={[
-                                                Math.round((latestEstimate.subtotal_days / latestEstimate.total_days) * 100),
-                                                Math.round((latestEstimate.contingency_days / latestEstimate.total_days) * 100)
-                                            ]}
-                                            options={{
-                                                chart: {
-                                                    type: 'radialBar',
-                                                    background: 'transparent',
-                                                    toolbar: { show: false }
-                                                },
-                                                plotOptions: {
-                                                    radialBar: {
-                                                        offsetY: -5,
-                                                        hollow: { size: '35%' },
-                                                        dataLabels: {
-                                                            name: {
-                                                                fontSize: '9px',
-                                                                offsetY: -3
-                                                            },
-                                                            value: {
-                                                                fontSize: '11px',
-                                                                fontWeight: 'bold',
-                                                                offsetY: 3,
-                                                                formatter: (val) => `${val}%`
-                                                            }
-                                                        }
-                                                    }
-                                                },
-                                                colors: ['#3b82f6', '#f97316'],
-                                                labels: ['Subtotal', 'Contingenza'],
-                                                legend: {
-                                                    show: true,
-                                                    position: 'bottom',
-                                                    fontSize: '9px',
-                                                    offsetY: -5,
-                                                    labels: { colors: ['#666', '#666'] }
-                                                }
-                                            } as ApexOptions}
-                                        />
-                                    </div>
-
-                                    {/* Mini Gauge: Risk Score */}
-                                    <div className="bg-accent/30 rounded-lg p-2">
-                                        <p className="text-[10px] font-medium mb-1 text-center">Risk Score</p>
-                                        <ReactApexChart
-                                            type="radialBar"
-                                            height={120}
-                                            series={[Math.min(100, (latestEstimate.risk_score / 30) * 100)]}
-                                            options={{
-                                                chart: {
-                                                    type: 'radialBar',
-                                                    background: 'transparent',
-                                                    toolbar: { show: false }
-                                                },
-                                                plotOptions: {
-                                                    radialBar: {
-                                                        hollow: { size: '60%' },
-                                                        dataLabels: {
-                                                            name: { show: false },
-                                                            value: {
-                                                                fontSize: '18px',
-                                                                fontWeight: 'bold',
-                                                                formatter: () => `${latestEstimate.risk_score}pt`
+                    <div className='flex flex-col max-h-screen'>
+                        <div className="flex flex-col min-h-0 ">
+                            {latestEstimate ? (
+                                <Card className="border-2 border-primary/20 bg-gradient-to-br from-primary/5 to-transparent shadow-md flex flex-col  overflow-hidden">
+                                    <CardHeader className="pb-1.5 pt-2 px-3 shrink-0">
+                                        <div className="flex items-center justify-between">
+                                            <CardTitle className="text-xs font-semibold flex items-center gap-1.5">
+                                                <TrendingUp className="h-3.5 w-3.5 text-primary" />
+                                                Stima Corrente
+                                            </CardTitle>
+                                            <Button size="sm" onClick={() => openEstimateEditor(latestEstimate)} className="h-6 text-xs px-2">
+                                                <Edit className="h-3 w-3 mr-1" />
+                                                Modifica
+                                            </Button>
+                                        </div>
+                                    </CardHeader>
+                                    <CardContent className="flex-1 h-full px-3 pb-3 overflow-auto space-y-2">
+                                        {/* Scenario e Data */}
+                                        <div className="flex items-center justify-between gap-3 text-[11px] text-muted-foreground mb-1">
+                                            <div>
+                                                <p className="uppercase text-[10px] font-medium">Scenario</p>
+                                                <p className="text-base font-semibold text-foreground">S{latestEstimate.scenario}</p>
+                                            </div>
+                                            <div className="flex items-center gap-1 text-[10px]">
+                                                <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
+                                                <span>{latestEstimate.created_on ? new Date(latestEstimate.created_on).toLocaleDateString('it-IT') : ''}</span>
+                                            </div>
+                                        </div>
+                                        {/* Totale Giorni Super Prominente + Contingenza % */}
+                                        <div className="text-center py-1 bg-gradient-to-br from-primary/10 to-transparent rounded-lg">
+                                            <p className="text-[10px] text-muted-foreground mb-0.5">Totale Giorni</p>
+                                            <p className="text-3xl font-bold text-primary leading-none">{latestEstimate.total_days} <span className="text-base font-normal text-muted-foreground align-top">gg</span></p>
+                                            <p className="text-[10px] text-muted-foreground">Contingenza {latestEstimate.contingency_pct}%</p>
+                                        </div>
+                                        <div className='flex h-fullmax-w-md mx-auto gap-2 flex-nowrap'>
+                                            {/* Mini Radial Chart: Distribuzione Compatta */}
+                                            <div className="bg-accent/30 rounded-lg p-2 min-w-0 flex-1">
+                                                <p className="text-[10px] font-medium mb-1 text-center truncate">Distribuzione</p>
+                                                <ReactApexChart
+                                                    type="radialBar"
+                                                    height={120}
+                                                    series={[
+                                                        Math.round((latestEstimate.subtotal_days / latestEstimate.total_days) * 100),
+                                                        Math.round((latestEstimate.contingency_days / latestEstimate.total_days) * 100)
+                                                    ]}
+                                                    options={{
+                                                        chart: {
+                                                            type: 'radialBar',
+                                                            background: 'transparent',
+                                                            toolbar: { show: false }
+                                                        },
+                                                        plotOptions: {
+                                                            radialBar: {
+                                                                offsetY: -5,
+                                                                hollow: { size: '35%' },
+                                                                dataLabels: {
+                                                                    name: {
+                                                                        fontSize: '9px',
+                                                                        offsetY: -3
+                                                                    },
+                                                                    value: {
+                                                                        fontSize: '11px',
+                                                                        fontWeight: 'bold',
+                                                                        offsetY: 3,
+                                                                        formatter: (val) => `${val}%`
+                                                                    }
+                                                                }
                                                             }
                                                         },
-                                                        track: { background: '#e5e7eb' }
-                                                    }
-                                                },
-                                                fill: {
-                                                    type: 'gradient',
-                                                    gradient: {
-                                                        shade: 'dark',
-                                                        type: 'horizontal',
-                                                        shadeIntensity: 0.5,
-                                                        gradientToColors: latestEstimate.risk_score <= 10 ? ['#22c55e'] : latestEstimate.risk_score <= 20 ? ['#f59e0b'] : ['#ef4444'],
-                                                        stops: [0, 100]
-                                                    }
-                                                },
-                                                colors: [latestEstimate.risk_score <= 10 ? '#10b981' : latestEstimate.risk_score <= 20 ? '#eab308' : '#dc2626'],
-                                            } as ApexOptions}
-                                        />
-                                        <div className="flex justify-between text-[9px] text-muted-foreground px-1 -mt-2">
-                                            <span>0pt</span>
-                                            <span>30pt+</span>
+                                                        colors: ['#3b82f6', '#f97316'],
+                                                        labels: ['Subtotal', 'Contingenza'],
+                                                        legend: {
+                                                            show: false,
+                                                            position: 'bottom',
+                                                            fontSize: '9px',
+                                                            offsetY: -5,
+                                                            labels: { colors: ['#666', '#666'] }
+                                                        }
+                                                    } as ApexOptions}
+                                                />
+                                            </div>
+                                            {/* Mini Gauge: Risk Score */}
+                                            <div className="bg-accent/30 rounded-lg p-2 min-w-0 flex-1">
+                                                <p className="text-[10px] font-medium mb-1 text-center truncate">Risk Score</p>
+                                                <ReactApexChart
+                                                    type="radialBar"
+                                                    height={100}
+                                                    series={[Math.min(100, (latestEstimate.risk_score / 30) * 100)]}
+                                                    options={{
+                                                        chart: {
+                                                            type: 'radialBar',
+                                                            background: 'transparent',
+                                                            toolbar: { show: false }
+                                                        },
+                                                        plotOptions: {
+                                                            radialBar: {
+                                                                hollow: { size: '60%' },
+                                                                dataLabels: {
+                                                                    name: { show: false },
+                                                                    value: {
+                                                                        fontSize: '18px',
+                                                                        fontWeight: 'bold',
+                                                                        formatter: () => `${latestEstimate.risk_score}pt`
+                                                                    }
+                                                                },
+                                                                track: { background: '#e5e7eb' }
+                                                            }
+                                                        },
+                                                        fill: {
+                                                            type: 'gradient',
+                                                            gradient: {
+                                                                shade: 'dark',
+                                                                type: 'horizontal',
+                                                                shadeIntensity: 0.5,
+                                                                gradientToColors: latestEstimate.risk_score <= 10 ? ['#22c55e'] : latestEstimate.risk_score <= 20 ? ['#f59e0b'] : ['#ef4444'],
+                                                                stops: [0, 100]
+                                                            }
+                                                        },
+                                                        colors: [latestEstimate.risk_score <= 10 ? '#10b981' : latestEstimate.risk_score <= 20 ? '#eab308' : '#dc2626'],
+                                                    } as ApexOptions}
+                                                />
+                                            </div>
                                         </div>
-                                    </div>
-
-                                    {/* Metriche Compatte */}
-                                    <div className="grid grid-cols-2 gap-1.5 text-xs">
-                                        <div className="p-1.5 bg-blue-50 dark:bg-blue-950/20 rounded">
-                                            <p className="text-[9px] text-muted-foreground mb-0.5">Subtotal</p>
-                                            <p className="font-semibold text-blue-600 dark:text-blue-400 text-sm">{latestEstimate.subtotal_days}gg</p>
+                                        {/* Metriche Compatte */}
+                                        <div className="grid grid-cols-2 gap-1.5 text-xs">
+                                            <div className="p-1.5 bg-blue-50 dark:bg-blue-950/20 rounded">
+                                                <p className="text-[9px] text-muted-foreground mb-0.5">Subtotal</p>
+                                                <p className="font-semibold text-blue-600 dark:text-blue-400 text-sm">{latestEstimate.subtotal_days}gg</p>
+                                            </div>
+                                            <div className="p-1.5 bg-orange-50 dark:bg-orange-950/20 rounded">
+                                                <p className="text-[9px] text-muted-foreground mb-0.5">Contingenza</p>
+                                                <p className="font-semibold text-orange-600 dark:text-orange-400 text-sm">{latestEstimate.contingency_days}gg</p>
+                                            </div>
                                         </div>
-                                        <div className="p-1.5 bg-orange-50 dark:bg-orange-950/20 rounded">
-                                            <p className="text-[9px] text-muted-foreground mb-0.5">Contingenza</p>
-                                            <p className="font-semibold text-orange-600 dark:text-orange-400 text-sm">
-                                                {latestEstimate.contingency_days}gg
+                                        {/* Dettagli aggiuntivi: attività, rischi, driver, opzionali */}
+                                        <div className="grid grid-cols-2 gap-1.5 text-[11px] mt-1">
+                                            <div className="rounded-lg border px-2 py-1">
+                                                <p className="text-muted-foreground text-[10px]">Attività selezionate</p>
+                                                <p className="font-semibold text-foreground">{latestEstimate.included_activities.length}</p>
+                                            </div>
+                                            <div className="rounded-lg border px-2 py-1">
+                                                <p className="text-muted-foreground text-[10px]">Rischi scelti</p>
+                                                <p className="font-semibold text-foreground">{latestEstimate.selected_risks.length}</p>
+                                            </div>
+                                        </div>
+                                        <div className="space-y-1 text-[11px] text-muted-foreground mt-1">
+                                            <p className="uppercase text-[10px] tracking-wide">Driver</p>
+                                            <p className="text-foreground">
+                                                {latestEstimate.complexity} • {latestEstimate.environments} • {latestEstimate.reuse} • {latestEstimate.stakeholders}
+                                            </p>
+                                            <p>
+                                                Opzionali: <span className="font-semibold text-foreground">{latestEstimate.include_optional ? 'Sì' : 'No'}</span>
                                             </p>
                                         </div>
-                                    </div>
-
-                                    {/* Info Footer Compatto */}
-                                    <div className="space-y-1 text-[10px] text-muted-foreground bg-accent/20 p-1.5 rounded">
-                                        <div className="flex items-center justify-between">
-                                            <div className="flex items-center gap-1">
-                                                <Clock className="h-3 w-3" />
-                                                <span>{new Date(latestEstimate.created_on).toLocaleDateString('it-IT', { month: 'short', day: 'numeric' })}</span>
+                                        {/* Info Footer Compatto */}
+                                        <div className="space-y-1 text-[10px] text-muted-foreground bg-accent/20 p-1.5 rounded mt-2">
+                                            <div className="flex items-center justify-between">
+                                                <div className="flex items-center gap-1">
+                                                    <Clock className="h-3 w-3" />
+                                                    <span>{latestEstimate.created_on ? new Date(latestEstimate.created_on).toLocaleDateString('it-IT', { month: 'short', day: 'numeric' }) : ''}</span>
+                                                </div>
+                                                <span>S#{latestEstimate.scenario}</span>
                                             </div>
-                                            <span>S#{latestEstimate.scenario}</span>
+                                            <div className="text-[9px]">
+                                                {latestEstimate.included_activities.length} attività • {latestEstimate.selected_risks.length} rischi
+                                            </div>
                                         </div>
-                                        <div className="text-[9px]">
-                                            {latestEstimate.included_activities.length} attività • {latestEstimate.selected_risks.length} rischi
-                                        </div>
-                                    </div>
-                                </CardContent>
-                            </Card>
-                        ) : (
-                            <Card className="border-2 border-dashed border-muted-foreground/30 flex flex-col items-center justify-center h-full">
-                                <CardContent className="text-center py-6">
-                                    <p className="text-xs text-muted-foreground mb-3">Nessuna stima creata</p>
-                                    <Button onClick={() => openEstimateEditor(null)} size="sm">
-                                        <Edit className="h-3 w-3 mr-1.5" />
-                                        Crea Stima
-                                    </Button>
-                                </CardContent>
-                            </Card>
-                        )}
+                                    </CardContent>
+                                </Card>
+
+
+                            ) : (
+                                <Card className="border-2 border-dashed border-muted-foreground/30 flex flex-col items-center justify-center h-full">
+                                    <CardContent className="text-center py-6">
+                                        <p className="text-xs text-muted-foreground mb-3">Nessuna stima creata</p>
+                                        <Button onClick={() => openEstimateEditor(null)} size="sm">
+                                            <Edit className="h-3 w-3 mr-1.5" />
+                                            Crea Stima
+                                        </Button>
+                                    </CardContent>
+                                </Card>
+                            )}
+                        </div>
+
                     </div>
 
+
                     {/* Colonna 2: Dettagli Requisito - Layout Compatto */}
-                    <Card className="border rounded-lg bg-white dark:bg-gray-900 flex flex-col h-full overflow-hidden">
-                        <CardHeader className="pb-1.5 pt-2 px-3 shrink-0">
-                            <CardTitle className="text-xs font-semibold flex items-center gap-1.5">
-                                📋 Dettagli
-                            </CardTitle>
-                        </CardHeader>
-                        <CardContent className="flex-1 px-3 pb-3 overflow-auto space-y-2">
-                            {requirement.description && (
-                                <div className="bg-accent/30 p-2 rounded-lg">
-                                    <h4 className="text-[10px] font-medium mb-1 text-muted-foreground">Descrizione</h4>
-                                    <p className="text-xs whitespace-pre-wrap leading-relaxed">{requirement.description}</p>
-                                </div>
-                            )}
-
-                            {/* Timeline Compatta */}
-                            <div className="bg-gradient-to-br from-blue-50/50 to-purple-50/50 dark:from-blue-950/20 dark:to-purple-950/20 p-2 rounded-lg">
-                                <h4 className="text-[10px] font-medium mb-2 text-muted-foreground">Timeline</h4>
-                                <div className="space-y-1.5">
-                                    {/* Creazione */}
-                                    <div className="flex items-center gap-2 p-1.5 bg-white/80 dark:bg-gray-900/80 rounded">
-                                        <div className="w-2 h-2 rounded-full bg-blue-500 shrink-0"></div>
-                                        <div className="flex-1 min-w-0">
-                                            <div className="flex items-center gap-1.5 mb-0.5">
-                                                <Calendar className="h-3 w-3 text-blue-600 dark:text-blue-400" />
-                                                <span className="text-[10px] font-medium text-blue-600 dark:text-blue-400">Creazione</span>
-                                            </div>
-                                            <p className="text-[10px] text-muted-foreground">
-                                                {new Date(requirement.created_on).toLocaleDateString('it-IT', { month: 'short', day: 'numeric', year: '2-digit' })}
-                                            </p>
-                                        </div>
+                    <div className="flex flex-col min-h-full">
+                        <Card className="border rounded-lg bg-white dark:bg-gray-900 flex flex-col overflow-hidden">
+                            <CardHeader className="pb-1.5 pt-2 px-3 shrink-0">
+                                <CardTitle className="text-xs font-semibold flex items-center gap-1.5">
+                                    📋 Dettagli
+                                </CardTitle>
+                            </CardHeader>
+                            <CardContent className="flex-1 px-3 pb-3 overflow-auto space-y-2">
+                                {requirement.description && (
+                                    <div className="bg-accent/30 p-2 rounded-lg">
+                                        <h4 className="text-[10px] font-medium mb-1 text-muted-foreground">Descrizione</h4>
+                                        <p className="text-xs whitespace-pre-wrap leading-relaxed">{requirement.description}</p>
                                     </div>
+                                )}
 
-                                    {/* Ultima Stima */}
-                                    {requirement.last_estimated_on && (
+                                {/* Timeline Compatta */}
+                                <div className="bg-gradient-to-br from-blue-50/50 to-purple-50/50 dark:from-blue-950/20 dark:to-purple-950/20 p-2 rounded-lg">
+                                    <h4 className="text-[10px] font-medium mb-2 text-muted-foreground">Timeline</h4>
+                                    <div className="space-y-1.5">
+                                        {/* Creazione */}
                                         <div className="flex items-center gap-2 p-1.5 bg-white/80 dark:bg-gray-900/80 rounded">
-                                            <div className="w-2 h-2 rounded-full bg-purple-500 shrink-0"></div>
+                                            <div className="w-2 h-2 rounded-full bg-blue-500 shrink-0"></div>
                                             <div className="flex-1 min-w-0">
                                                 <div className="flex items-center gap-1.5 mb-0.5">
-                                                    <Clock className="h-3 w-3 text-purple-600 dark:text-purple-400" />
-                                                    <span className="text-[10px] font-medium text-purple-600 dark:text-purple-400">Ultima Stima</span>
+                                                    <Calendar className="h-3 w-3 text-blue-600 dark:text-blue-400" />
+                                                    <span className="text-[10px] font-medium text-blue-600 dark:text-blue-400">Creazione</span>
                                                 </div>
-                                                <div className="flex items-center justify-between">
-                                                    <p className="text-[10px] text-muted-foreground">
-                                                        {new Date(requirement.last_estimated_on).toLocaleDateString('it-IT', { month: 'short', day: 'numeric', year: '2-digit' })}
-                                                    </p>
-                                                    {latestEstimate && (
-                                                        <div className="flex items-center gap-1">
-                                                            <Badge variant="outline" className="text-[9px] px-1 py-0 h-4">
-                                                                {latestEstimate.total_days}gg
-                                                            </Badge>
-                                                        </div>
-                                                    )}
+                                                <p className="text-[10px] text-muted-foreground">
+                                                    {new Date(requirement.created_on).toLocaleDateString('it-IT', { month: 'short', day: 'numeric', year: '2-digit' })}
+                                                </p>
+                                            </div>
+                                        </div>
+
+                                        {/* Ultima Stima */}
+                                        {requirement.last_estimated_on && (
+                                            <div className="flex items-center gap-2 p-1.5 bg-white/80 dark:bg-gray-900/80 rounded">
+                                                <div className="w-2 h-2 rounded-full bg-purple-500 shrink-0"></div>
+                                                <div className="flex-1 min-w-0">
+                                                    <div className="flex items-center gap-1.5 mb-0.5">
+                                                        <Clock className="h-3 w-3 text-purple-600 dark:text-purple-400" />
+                                                        <span className="text-[10px] font-medium text-purple-600 dark:text-purple-400">Ultima Stima</span>
+                                                    </div>
+                                                    <div className="flex items-center justify-between">
+                                                        <p className="text-[10px] text-muted-foreground">
+                                                            {new Date(requirement.last_estimated_on).toLocaleDateString('it-IT', { month: 'short', day: 'numeric', year: '2-digit' })}
+                                                        </p>
+                                                        {latestEstimate && (
+                                                            <div className="flex items-center gap-1">
+                                                                <Badge variant="outline" className="text-[9px] px-1 py-0 h-4">
+                                                                    {latestEstimate.total_days}gg
+                                                                </Badge>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* Stato Attuale */}
+                                        <div className="flex items-center gap-2 p-1.5 bg-white/80 dark:bg-gray-900/80 rounded">
+                                            <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse shrink-0"></div>
+                                            <div className="flex-1 min-w-0">
+                                                <div className="flex items-center gap-1.5 mb-0.5">
+                                                    <TrendingUp className="h-3 w-3 text-green-600 dark:text-green-400" />
+                                                    <span className="text-[10px] font-medium text-green-600 dark:text-green-400">Stato</span>
+                                                </div>
+                                                <div className="flex items-center gap-1">
+                                                    <Badge className={`${getStateColor(requirement.state)} text-[9px] px-1 py-0 h-4`}>
+                                                        {stateLabel}
+                                                    </Badge>
+                                                    <Badge className={`${getPriorityColor(requirement.priority)} text-[9px] px-1 py-0 h-4`}>
+                                                        {priorityLabel}
+                                                    </Badge>
                                                 </div>
                                             </div>
                                         </div>
-                                    )}
+                                    </div>
+                                </div>
 
-                                    {/* Stato Attuale */}
-                                    <div className="flex items-center gap-2 p-1.5 bg-white/80 dark:bg-gray-900/80 rounded">
-                                        <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse shrink-0"></div>
-                                        <div className="flex-1 min-w-0">
-                                            <div className="flex items-center gap-1.5 mb-0.5">
-                                                <TrendingUp className="h-3 w-3 text-green-600 dark:text-green-400" />
-                                                <span className="text-[10px] font-medium text-green-600 dark:text-green-400">Stato</span>
+                                {/* Statistiche Stime - Compatto */}
+                                {estimates.length > 0 && (
+                                    <div className="bg-accent/30 p-2 rounded-lg">
+                                        <h4 className="text-[10px] font-medium mb-1.5 text-muted-foreground">Statistiche Stime</h4>
+                                        <div className="grid grid-cols-3 gap-1.5">
+                                            <div className="bg-primary/10 p-1.5 rounded text-center">
+                                                <p className="text-base font-bold text-primary leading-none">{estimates.length}</p>
+                                                <p className="text-[9px] text-muted-foreground mt-0.5">Scenari</p>
                                             </div>
-                                            <div className="flex items-center gap-1">
-                                                <Badge className={`${getStateColor(requirement.state)} text-[9px] px-1 py-0 h-4`}>
-                                                    {stateLabel}
-                                                </Badge>
-                                                <Badge className={`${getPriorityColor(requirement.priority)} text-[9px] px-1 py-0 h-4`}>
-                                                    {priorityLabel}
-                                                </Badge>
+                                            <div className="bg-green-500/10 p-1.5 rounded text-center">
+                                                <p className="text-base font-bold text-green-600 dark:text-green-400 leading-none">
+                                                    {Math.min(...estimates.map(e => e.total_days))}
+                                                </p>
+                                                <p className="text-[9px] text-muted-foreground mt-0.5">Min gg</p>
+                                            </div>
+                                            <div className="bg-red-500/10 p-1.5 rounded text-center">
+                                                <p className="text-base font-bold text-red-600 dark:text-red-400 leading-none">
+                                                    {Math.max(...estimates.map(e => e.total_days))}
+                                                </p>
+                                                <p className="text-[9px] text-muted-foreground mt-0.5">Max gg</p>
                                             </div>
                                         </div>
                                     </div>
-                                </div>
-                            </div>
+                                )}
 
-                            {/* Statistiche Stime - Compatto */}
-                            {estimates.length > 0 && (
-                                <div className="bg-accent/30 p-2 rounded-lg">
-                                    <h4 className="text-[10px] font-medium mb-1.5 text-muted-foreground">Statistiche Stime</h4>
-                                    <div className="grid grid-cols-3 gap-1.5">
-                                        <div className="bg-primary/10 p-1.5 rounded text-center">
-                                            <p className="text-base font-bold text-primary leading-none">{estimates.length}</p>
-                                            <p className="text-[9px] text-muted-foreground mt-0.5">Scenari</p>
-                                        </div>
-                                        <div className="bg-green-500/10 p-1.5 rounded text-center">
-                                            <p className="text-base font-bold text-green-600 dark:text-green-400 leading-none">
-                                                {Math.min(...estimates.map(e => e.total_days))}
-                                            </p>
-                                            <p className="text-[9px] text-muted-foreground mt-0.5">Min gg</p>
-                                        </div>
-                                        <div className="bg-red-500/10 p-1.5 rounded text-center">
-                                            <p className="text-base font-bold text-red-600 dark:text-red-400 leading-none">
-                                                {Math.max(...estimates.map(e => e.total_days))}
-                                            </p>
-                                            <p className="text-[9px] text-muted-foreground mt-0.5">Max gg</p>
+                                {requirement.labels && (
+                                    <div className="bg-accent/30 p-2 rounded-lg">
+                                        <h4 className="text-[10px] font-medium mb-1.5 text-muted-foreground">Etichette</h4>
+                                        <div className="flex flex-wrap gap-1">
+                                            {parseLabels(requirement.labels).map((label, index) => (
+                                                <Badge key={index} variant="outline" className="text-[9px] px-1.5 py-0 h-5">
+                                                    <Tag className="h-2.5 w-2.5 mr-1" />
+                                                    {label.trim()}
+                                                </Badge>
+                                            ))}
                                         </div>
                                     </div>
-                                </div>
-                            )}
+                                )}
 
-                            {requirement.labels && (
-                                <div className="bg-accent/30 p-2 rounded-lg">
-                                    <h4 className="text-[10px] font-medium mb-1.5 text-muted-foreground">Etichette</h4>
-                                    <div className="flex flex-wrap gap-1">
-                                        {parseLabels(requirement.labels).map((label, index) => (
-                                            <Badge key={index} variant="outline" className="text-[9px] px-1.5 py-0 h-5">
-                                                <Tag className="h-2.5 w-2.5 mr-1" />
-                                                {label.trim()}
-                                            </Badge>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
+                                {/* Relations Section */}
+                                <RequirementRelations
+                                    currentRequirement={requirement}
+                                    allRequirements={allRequirements}
+                                    onNavigate={handleNavigateToRequirement}
+                                />
+                            </CardContent>
+                        </Card>
+                    </div>
 
-                            {/* Relations Section */}
-                            <RequirementRelations
-                                currentRequirement={requirement}
-                                allRequirements={allRequirements}
-                                onNavigate={handleNavigateToRequirement}
-                            />
-                        </CardContent>
-                    </Card>
 
                     {/* Colonna 3: Storico Compatto + CTA */}
-                    <div className="flex flex-col gap-2 h-full min-h-0">
+                    <div className="flex flex-col gap-2 h-full min-h-0 flex-1">
                         {/* Storico Stime - con scroll interno */}
                         <Card className="border rounded-lg bg-white dark:bg-gray-900 flex flex-col overflow-hidden flex-1 min-h-0">
                             <CardHeader className="pb-1.5 pt-2 px-3 shrink-0">
@@ -624,86 +661,7 @@ export function RequirementDetailView({ requirement, list, onBack, onNavigateToR
                             </CardContent>
                         </Card>
 
-                        {/* Dettaglio stima selezionata */}
-                        {viewingEstimate && (
-                            <Card className="border rounded-lg bg-white dark:bg-gray-900">
-                                <CardHeader className="pb-0 pt-3 px-3">
-                                    <div className="flex items-center justify-between gap-2">
-                                        <CardTitle className="text-xs font-semibold flex items-center gap-1.5">
-                                            <Clock className="h-3.5 w-3.5 text-muted-foreground" />
-                                            Dettaglio stima
-                                        </CardTitle>
-                                        <Button
-                                            size="sm"
-                                            className="h-7 px-2 text-[10px]"
-                                            onClick={(event) => {
-                                                event.stopPropagation();
-                                                if (viewingEstimate) {
-                                                    openEstimateEditor(viewingEstimate);
-                                                }
-                                            }}
-                                        >
-                                            <Edit className="h-3 w-3 mr-1" />
-                                            Modifica
-                                        </Button>
-                                    </div>
-                                </CardHeader>
-                                <CardContent className="space-y-3 px-3 pb-3 pt-1">
-                                    <div className="flex items-center justify-between gap-3 text-[11px] text-muted-foreground">
-                                        <div>
-                                            <p className="uppercase text-[10px] font-medium">Scenario</p>
-                                            <p className="text-base font-semibold text-foreground">S{viewingEstimate.scenario}</p>
-                                        </div>
-                                        <div className="flex items-center gap-1 text-[10px]">
-                                            <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
-                                            <span>{new Date(viewingEstimate.created_on).toLocaleDateString('it-IT')}</span>
-                                        </div>
-                                    </div>
-                                    <div className="rounded-2xl border border-dashed border-muted/70 bg-muted/10 px-3 py-2 text-center">
-                                        <p className="text-[10px] text-muted-foreground uppercase tracking-[0.2em] mb-1">Totale giorni</p>
-                                        <p className="text-3xl font-bold text-foreground">{viewingEstimate.total_days} gg</p>
-                                        <p className="text-[10px] text-muted-foreground">Contingenza {viewingEstimate.contingency_pct}%</p>
-                                    </div>
-                                    <div className="grid grid-cols-2 gap-2 text-[11px]">
-                                        <div className="rounded-lg border px-2 py-1">
-                                            <p className="text-muted-foreground text-[10px]">Subtotal</p>
-                                            <p className="font-semibold text-foreground">{viewingEstimate.subtotal_days} gg</p>
-                                        </div>
-                                        <div className="rounded-lg border px-2 py-1">
-                                            <p className="text-muted-foreground text-[10px]">Contingenza</p>
-                                            <p className="font-semibold text-foreground">{viewingEstimate.contingency_days} gg</p>
-                                        </div>
-                                        <div className="rounded-lg border px-2 py-1">
-                                            <p className="text-muted-foreground text-[10px]">Attività selezionate</p>
-                                            <p className="font-semibold text-foreground">{viewingEstimate.included_activities.length}</p>
-                                        </div>
-                                        <div className="rounded-lg border px-2 py-1">
-                                            <p className="text-muted-foreground text-[10px]">Rischi scelti</p>
-                                            <p className="font-semibold text-foreground">{viewingEstimate.selected_risks.length}</p>
-                                        </div>
-                                    </div>
-                                    <div className="space-y-1 text-[11px] text-muted-foreground">
-                                        <p className="uppercase text-[10px] tracking-wide">Driver</p>
-                                        <p className="text-foreground">
-                                            {viewingEstimate.complexity} • {viewingEstimate.environments} • {viewingEstimate.reuse} • {viewingEstimate.stakeholders}
-                                        </p>
-                                        <p>
-                                            Opzionali: <span className="font-semibold text-foreground">{viewingEstimate.include_optional ? 'Sì' : 'No'}</span>
-                                        </p>
-                                    </div>
-                                </CardContent>
-                            </Card>
-                        )}
 
-                        {/* CTA Nuova Stima - Fisso in basso */}
-                        <Card className="border-2 border-dashed border-primary/30 bg-gradient-to-br from-primary/5 to-transparent shrink-0">
-                            <CardContent className="text-center py-3 px-3">
-                                <Button onClick={() => openEstimateEditor(null)} className="w-full h-8 text-xs">
-                                    <Edit className="h-3.5 w-3.5 mr-1.5" />
-                                    Nuova Stima
-                                </Button>
-                            </CardContent>
-                        </Card>
                     </div>
                 </div>
             </div>

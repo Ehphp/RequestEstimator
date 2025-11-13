@@ -19,7 +19,8 @@ export interface List {
   default_description?: string;
   // Default fields for estimates (cascade defaults)
   default_environments?: '1 env' | '2 env' | '3 env';
-  default_stakeholders?: '1 team' | '2-3 team' | '4+ team';
+  default_stakeholders?: '1 team' | '2-3 team' | '4+ team' | null;
+  default_reuse?: 'High' | 'Medium' | 'Low' | null;
 }
 
 export interface Requirement {
@@ -89,6 +90,18 @@ export interface Estimate {
   risks_default_source?: string;
   risks_is_overridden: boolean;
   default_json?: string;
+
+  // Optional per-estimate overrides for activities. Low-impact: kept optional and
+  // separate from `included_activities` (which remains string[]) so existing
+  // code that expects string[] keeps working. When present, UIs should merge
+  // these overrides with the catalog activity definitions for display and
+  // for calculation (override base_days/name/driver_group).
+  included_activities_overrides?: Array<{
+    activity_code: string;
+    override_name?: string;
+    override_days?: number;
+    override_group?: string;
+  }>;
 }
 
 // Catalog types
@@ -152,6 +165,23 @@ export interface StickyDefaults {
   stakeholders?: string;
   included_activities?: string[];
   updated_on: string;
+}
+
+// Per-list catalog for activities (persisted by list and optional technology)
+export interface ListActivityCatalog {
+  id?: string; // db id or uuid
+  list_id: string;
+  technology?: string | null;
+  // catalog structured as groups -> activities. Activities reuse the Activity type.
+  catalog: {
+    groups: Array<{
+      group: string;
+      activities: Activity[];
+    }>;
+  };
+  created_on?: string;
+  updated_on?: string;
+  created_by?: string;
 }
 
 export interface ExportRow {

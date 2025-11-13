@@ -25,7 +25,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useSearchParams } from 'react-router-dom';
 import { EmptyListsSidebar } from '@/components/EmptyListsSidebar';
 import { DefaultPill } from '@/components/DefaultPill';
-import { List, Requirement, RequirementWithEstimate } from '../types';
+import { List, Requirement, RequirementWithEstimate, Activity } from '../types';
 import {
   getLists,
   getRequirementsByListId,
@@ -36,6 +36,8 @@ import {
 import { logger } from '@/lib/logger';
 import { getListDefaults } from '../lib/defaults';
 import { presets } from '@/data/presets';
+import { activities as globalActivities } from '@/data/catalog';
+import CreateCatalogModal from '@/components/CreateCatalogModal';
 import { RequirementsList } from '../components/RequirementsList';
 import { RequirementDetailView } from '../components/RequirementDetailView';
 import { TreemapApexMultiSeries } from '../components/TreemapApexMultiSeries';
@@ -109,6 +111,7 @@ export default function Index() {
   const reqIdParam = searchParams.get('reqId');
 
   const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [showCatalogModal, setShowCatalogModal] = useState(false);
   const [isSavingList, setIsSavingList] = useState(false);
   const [formData, setFormData] = useState<{
     name: string;
@@ -142,6 +145,34 @@ export default function Index() {
       default_stakeholders: undefined
     };
   });
+  // Catalog customization state for the Create List flow
+  const [customGroups, setCustomGroups] = useState<Array<{ group: string; activities: Activity[] }>>([]);
+  const [selectedActivityCodes, setSelectedActivityCodes] = useState<string[]>([]);
+  const [saveCatalogOnCreate, setSaveCatalogOnCreate] = useState(false);
+
+  const activitiesByGroup: Record<string, Activity[]> = useMemo(() => {
+    const m: Record<string, Activity[]> = {};
+    // Start from canonical/global activities
+    (globalActivities || []).forEach((a) => {
+      const g = a.driver_group || 'Other';
+      if (!m[g]) m[g] = [];
+      m[g].push(a);
+    });
+
+    // Merge any custom groups/activities created in the CreateCatalogModal so they
+    // are visible immediately in the view above. Avoid duplicating activity codes.
+    (customGroups || []).forEach((cg) => {
+      if (!cg || !cg.group) return;
+      if (!m[cg.group]) m[cg.group] = [];
+      (cg.activities || []).forEach((act) => {
+        if (!m[cg.group].some((x) => x.activity_code === act.activity_code)) {
+          m[cg.group].push(act);
+        }
+      });
+    });
+
+    return m;
+  }, [customGroups, globalActivities]);
   const [defaultSources, setDefaultSources] = useState<Record<string, string>>({
     owner: 'Current User',
     period: 'Current Quarter',
@@ -1083,28 +1114,54 @@ export default function Index() {
                 </div>
               </section>
 
-              <div className="flex flex-col gap-3 border-t pt-4 sm:flex-row sm:items-center sm:justify-between">
-                <p className="text-xs text-muted-foreground">
-                  Potrai aggiornare questi dati in seguito dalla scheda lista.
-                </p>
-                <div className="flex flex-col gap-2 w-full sm:w-auto sm:flex-row">
-                  <Button type="submit" className="w-full sm:w-auto min-w-[150px]" disabled={isSavingList}>
-                    {isSavingList && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-                    Crea Lista
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="w-full sm:w-auto"
-                    onClick={() => {
-                      resetForm();
-                      setShowCreateDialog(false);
-                    }}
-                  >
-                    Annulla
-                  </Button>
+              <div className="flex flex-col gap-3 border-t pt-4">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-xs text-muted-foreground">Potrai aggiornare questi dati in seguito dalla scheda lista.</p>
+                  <div className="flex items-center gap-3">
+                    <label className="flex items-center gap-2 text-sm">
+                      <Checkbox checked={saveCatalogOnCreate} onCheckedChange={(v) => setSaveCatalogOnCreate(Boolean(v))} />
+                      <span className="text-xs">Salva come catalogo per questa lista</span>
+                    </label>
+                    <Button type="button" size="sm" variant="ghost" onClick={() => setShowCatalogModal(true)}>
+                      Personalizza catalogo attività
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-2 w-full sm:w-auto sm:flex-row sm:items-center sm:justify-between">
+                  <div />
+                  <div className="flex flex-col gap-2 w-full sm:w-auto sm:flex-row">
+                    <Button type="submit" className="w-full sm:w-auto min-w-[150px]" disabled={isSavingList}>
+                      {isSavingList && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                      Crea Lista
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="w-full sm:w-auto"
+                      onClick={() => {
+                        resetForm();
+                        setShowCreateDialog(false);
+                      }}
+                    >
+                      Annulla
+                    </Button>
+                  </div>
                 </div>
               </div>
+
+              {/* Create Catalog Modal (used to customize per-list activity catalog) */}
+              <CreateCatalogModal
+                open={showCatalogModal}
+                onOpenChange={(open) => setShowCatalogModal(open)}
+                activitiesByGroup={activitiesByGroup}
+                selectedActivityCodes={selectedActivityCodes}
+                setSelectedActivityCodes={setSelectedActivityCodes}
+                customGroups={customGroups}
+                setCustomGroups={setCustomGroups}
+                saveCatalogOnCreate={saveCatalogOnCreate}
+                setSaveCatalogOnCreate={setSaveCatalogOnCreate}
+              />
             </form>
           </DialogContent>
         </Dialog>
@@ -1151,14 +1208,19 @@ export default function Index() {
                   </p>
                 </div>
               </div>
-              <div className="flex-1 min-h-0">
+              <div className="min-h-0 flex-1">
                 <TreemapApexMultiSeries
                   lists={activeLists}
                   listStats={listStats}
                   listRequirementStats={listRequirementStats}
                   onSelectList={handleSelectList}
                   onRequirementSelect={handleTreemapRequirementSelect}
-                  containerHeight={window.innerHeight - 140}
+                  // Use measured container size when available and clamp to conservative bounds
+                  containerHeight={Math.min(
+                    // prefer containerSize.height (measured available space), fall back to window height
+                    containerSize.height ? Math.max(160, containerSize.height - 120) : window.innerHeight - 140,
+                    360, // maximum height for the treemap to avoid overflow on smaller viewports
+                  )}
                   showLegend={true}
                 />
               </div>

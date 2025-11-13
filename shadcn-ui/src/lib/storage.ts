@@ -1,4 +1,4 @@
-import { List, Requirement, Estimate, Activity, Driver, Risk, ContingencyBand, ExportRow, StickyDefaults } from '../types';
+import { List, Requirement, Estimate, Activity, Driver, Risk, ContingencyBand, ExportRow, StickyDefaults, ListActivityCatalog } from '../types';
 import { supabase, TABLES, safeDbRead } from './supabase';
 import { logger, logCrud } from './logger';
 import { throwDbError, isNotFoundError } from './dbErrors';
@@ -372,6 +372,66 @@ export async function getContingencyBands(): Promise<ContingencyBand[]> {
     }
     return data || [];
   }, 'getContingencyBands', []);
+}
+
+// Per-list Activity Catalog Management
+export async function getListActivityCatalog(
+  listId: string,
+  technology: string | null = null
+): Promise<ListActivityCatalog | null> {
+  if (!listId) return null;
+
+  return safeDbRead(async () => {
+    const query = supabase
+      .from(TABLES.LIST_ACTIVITY_CATALOGS)
+      .select('*')
+      .eq('list_id', listId);
+
+    // technology can be null; when provided filter by technology
+    if (technology !== undefined && technology !== null) {
+      query.eq('technology', technology);
+    } else {
+      query.is('technology', null);
+    }
+
+    const { data, error } = await query.limit(1);
+
+    if (error) {
+      throw error;
+    }
+
+    if (!data || data.length === 0) return null;
+
+    // Supabase returns created_on/updated_on fields as strings if present
+    return data[0] as ListActivityCatalog;
+  }, 'getListActivityCatalog', null);
+}
+
+export async function upsertListActivityCatalog(
+  listId: string,
+  technology: string | null,
+  catalog: ListActivityCatalog['catalog'],
+  createdBy?: string
+): Promise<void> {
+  if (!listId) throw new Error('Invalid listId');
+
+  const payload = {
+    list_id: listId,
+    technology: technology,
+    catalog: catalog,
+    created_by: createdBy || null,
+    updated_on: new Date().toISOString()
+  } as any;
+
+  const { error } = await supabase
+    .from(TABLES.LIST_ACTIVITY_CATALOGS)
+    .upsert(payload, { onConflict: 'list_id,technology' });
+
+  if (error) {
+    throwDbError(error, 'Impossibile salvare il catalogo attività per la lista');
+  }
+
+  logCrud.create('ListActivityCatalog', listId);
 }
 
 // Sticky Defaults Management

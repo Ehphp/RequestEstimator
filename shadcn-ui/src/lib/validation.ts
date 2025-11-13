@@ -65,6 +65,9 @@ export function validateEstimate(
     const { validateActivities = true, strictMode = false } = options;
     const errors: string[] = [];
 
+
+
+
     // Validate complexity
     if (!complexity) {
         errors.push('Seleziona complessità');
@@ -95,20 +98,24 @@ export function validateEstimate(
         );
     }
 
-    // Validate stakeholders
-    if (!stakeholders) {
-        errors.push('Seleziona numero stakeholder');
-    } else if (!isValidStakeholders(stakeholders)) {
-        errors.push(strictMode
-            ? `Stakeholders non valida: deve essere ${VALID_STAKEHOLDERS.join(', ')}`
-            : 'Stakeholders non valida'
-        );
-    }
 
-    // Validate activities if required
+    // Stakeholders optional, activities obbligatorie sempre
+    if (strictMode) {
+        if (!stakeholders) {
+            // Stakeholders richiesto solo in strictMode
+            errors.push('Seleziona numero stakeholder');
+        } else if (!isValidStakeholders(stakeholders)) {
+            errors.push(`Stakeholders non valida: deve essere ${VALID_STAKEHOLDERS.join(', ')}`);
+        }
+    } else {
+        if (stakeholders && !isValidStakeholders(stakeholders)) {
+            errors.push('Stakeholders non valida');
+        }
+    }
+    // Attività sempre obbligatorie
     if (validateActivities) {
         if (!selectedActivities || selectedActivities.length === 0) {
-            errors.push('Seleziona almeno un\'attività');
+            errors.push("Seleziona almeno un'attività");
         }
     }
 
